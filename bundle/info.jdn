@@ -1,0 +1,39 @@
+{:name "fudge"
+ :url "https://github.com/sogaiu/fudge"
+ :repo "git+https://github.com/sogaiu/fudge.git"
+
+ :vendored
+ [{:name "some-bundle-bits"
+   :url "https://github.com/sogaiu/some-bundle-bits"
+   :tag "7ddb7ec53a6eb8c81b0c22bb7710a01fff57a759"
+   :paths [["sbb.janet" "bundle/"]]}
+  {:name "jell"
+   :url "https://github.com/sogaiu/jell"
+   :tag "5002ee1176b5e9c6249f02d092de2e0d2a792445"
+   :paths [["jell" "bin/"]]}
+  {:name "jipper"
+   :url "https://github.com/sogaiu/jipper"
+   :tag "17a5e5b8a609e20579a641916d0808e446f5d112"
+   :paths [["jipper.janet" "src/"]]}
+  {:name "niche"
+   :url "https://github.com/sogaiu/niche"
+   :tag "3f744cfb02b472971f82e78f16a027908a4bd717"
+   :paths [["niche.janet" "bin/"]
+           ["src/args.janet" "src/"]
+           ["src/errors.janet" "src/"]
+           ["src/files.janet" "src/"]
+           ["src/log.janet" "src/"]
+           ["src/output.janet" "src/"]
+           ["src/paths.janet" "src/"]
+           ["src/rewrite.janet" "src/"]
+           ["src/settings.janet" "src/"]
+           ["src/tests.janet" "src/"]
+           ["src/verify.janet" "src/"]]}]
+
+ :binscripts
+ # has `.janet` extension so that importing is possible, e.g. via:
+ #
+ #   (import bin/quiche)
+ [{:main "quiche.janet"
+   :is-janet true}]}
+

@@ -1,0 +1,45 @@
+Usage: quiche [<file-or-dir>...]
+       quiche [-h|--help] [-v|--version]
+
+Quaintly Update Inadequate Comment-Hidden Expressions
+
+Parameters:
+
+  <file-or-dir>          path to file or directory
+
+Options:
+
+  -h, --help             show this output
+  -v, --version          show version information
+
+Configuration:
+
+  .niche.jdn              configuration file [1]
+
+Examples:
+
+  1. Update comment-hidden expressions in `src/`
+     directory:
+
+     $ quiche src
+
+  2. Run using the configuration file via direct
+     invocation:
+
+     $ quiche
+
+Example `.niche.jdn` content:
+
+  {# what to work on - file and dir paths
+   :includes ["src" "bin/my-script"]
+   # what to skip - file paths only
+   :excludes ["src/sample.janet"]}
+
+---
+
+[1] quiche makes use of niche's configuration
+    file.  See:
+
+      https://github.com/sogaiu/niche
+
+    for more information about niche.
