@@ -235,7 +235,8 @@
     (default right [])
     (distinct [;left ;right]))
   #
-  (merge opts
+  (merge {:overwrite true}
+         opts
          {:includes (merge-indexed includes (get opts :includes))
           :excludes (merge-indexed excludes (get opts :excludes))}))
 
@@ -248,22 +249,24 @@
   (a/parse-args ["src/main.janet"])
   # =>
   @{:excludes @[]
-    :includes @["src/main.janet"]}
+    :includes @["src/main.janet"]
+    :overwrite true}
 
   (a/parse-args ["-h"])
   # =>
   @{:show-help true}
 
-  (a/parse-args ["{:overwrite true}" "src/main.janet"])
+  (a/parse-args ["{:overwrite false}" "src/main.janet"])
   # =>
   @{:excludes @[]
     :includes @["src/main.janet"]
-    :overwrite true}
+    :overwrite false}
 
   (a/parse-args [`{:excludes ["src/args.janet"]}` "src/main.janet"])
   # =>
   @{:excludes @["src/args.janet"]
-    :includes @["src/main.janet"]}
+    :includes @["src/main.janet"]
+    :overwrite true}
 
   (setdyn :test/color? old-value)
 
@@ -4189,7 +4192,7 @@
 
 ###########################################################################
 
-(def version "2026-01-19_05-20-55")
+(def version "2026-01-20_08-48-15")
 
 (def usage
   ``
