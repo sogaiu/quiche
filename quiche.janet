@@ -26,7 +26,12 @@
       (eachp [n v] locals
         (eprintf "    %s: %n" n v)))
     (when-let [e (get err :e-via-try)]
-      (eprintf "  e via try: %n" e))))
+      (eprintf "  e via try: %n" e))
+    (when-let [st (get err :stacktrace)]
+      (eprint "  stacktrace:")
+      (def lines (string/split "\n" st))
+      (each l lines
+        (eprint "    " l)))))
 
 
 (comment import ./files :prefix "")
@@ -3866,9 +3871,9 @@
   (def b {:in "make-tests" :args {:in-path in-path :opts opts}})
   #
   (def src (slurp in-path))
-  (def [ok? _] (protect (parse-all src)))
+  (def [ok? result] (protect (parse-all src)))
   (when (not ok?)
-    (break :parse-error))
+    (e/emf b "parse error: %s" result))
   #
   (def test-src (r/rewrite-as-test-file src))
   (when (not test-src)
@@ -3959,30 +3964,14 @@
 
   )
 
-(defn t/make-lint-path
-  [in-path]
-  #
-  (string (t/make-test-path in-path) "-lint"))
-
-(comment
-
-  (t/make-lint-path "tmp/hello.janet")
-  # =>
-  "tmp/_hello.janet.niche-lint"
-
-  )
-
-(defn t/lint-and-get-error
-  [input]
-  (def lint-path (t/make-lint-path input))
-  (defer (os/rm lint-path)
-    (def lint-src (r/rewrite-as-file-to-lint (slurp input)))
-    (spit lint-path lint-src)
-    (def lint-buf @"")
-    (with-dyns [:err lint-buf] (flycheck lint-path))
-    # XXX: peg may need work
-    (peg/match ~(sequence "error: " (to ":") (capture (to "\n")))
-               lint-buf)))
+# example of first line of err-str:
+#
+#   error: d/_n.janet.niche:142:38: compile error: unknown symbol _
+(defn t/parse-error
+  [err-str]
+  (peg/match ~(sequence (thru "error: ")
+                        (capture (to "\n")))
+             err-str))
 
 (defn t/has-unreadable?
   [test-results]
@@ -4015,12 +4004,16 @@
   (def test-path result)
   # run tests and collect output
   (def [exit-code out err] (t/run-tests test-path))
-  (os/rm test-path)
   #
   (when (empty? out)
-    (if (t/lint-and-get-error input)
-      (break [:lint-error nil nil nil])
-      (break [:test-run-error nil nil nil])))
+    (when (t/parse-error err)
+      (def extra (if (os/getenv "VERBOSE")
+                   "see stacktrace below"
+                   "rerun with VERBOSE=1 for details"))
+      (e/emf (merge b {:stacktrace err})
+             "error running test file, %s" extra)))
+  #
+  (os/rm test-path)
   #
   (def [test-results test-out] (t/parse-output out))
   (when-let [unreadable (t/has-unreadable? test-results)]
@@ -4036,53 +4029,20 @@
 
 (defn c/summarize
   [noted-paths]
-  # pass / fail
-  (def ps-paths (get noted-paths :pass))
-  (def fl-paths (get noted-paths :fail))
-  # errors
-  (def p-paths (get noted-paths :parse))
-  (def l-paths (get noted-paths :lint))
-  (def r-paths (get noted-paths :run))
-  (def err-paths [p-paths l-paths r-paths])
-  #
-  (when fl-paths
-    (def n-ps-paths (length ps-paths))
-    (def n-fl-paths (length fl-paths))
-    (when (and (empty? fl-paths) (empty? err-paths))
-      (l/notenf :i "All tests successful in %d file(s)."
-                n-ps-paths))
-    (when (not (empty? fl-paths))
-      (l/notenf :i "Test failures in %d of %d file(s)."
-                n-fl-paths (+ n-fl-paths n-ps-paths))))
   # updated
   (def upd-paths (get noted-paths :update))
   #
   (when upd-paths
     (def n-upd-paths (length upd-paths))
-    (l/notenf :i "Test(s) updated in %d file(s)." n-upd-paths))
-  #
-  (when (some |(not (empty? $)) err-paths)
-    (def num-skipped (sum (map length err-paths)))
-    (l/notenf :w "Skipped %d files(s)." num-skipped))
-  (when (not (empty? p-paths))
-    (l/notenf :w "%s: parse error(s) detected in %d file(s)."
-              (o/color-msg "WARNING" :red) (length p-paths)))
-  (when (not (empty? l-paths))
-    (l/notenf :w "%s: linting error(s) detected in %d file(s)."
-              (o/color-msg "WARNING" :yellow) (length l-paths)))
-  (when (not (empty? r-paths))
-    (l/notenf :w "%s: runtime error(s) detected for %d file(s)."
-              (o/color-msg "WARNING" :yellow) (length r-paths))))
+    (l/notenf :i "Test(s) updated in %d file(s)." n-upd-paths)))
 
 (defn c/mru-single
   [input &opt opts]
   (def b @{:in "mru-single" :args {:input input :opts opts}})
   # try to make and run tests, then collect output
   (def [exit-code test-results _ _] (t/make-and-run input opts))
-  (when (get (invert [:no-tests
-                      :parse-error :lint-error :test-run-error])
-             exit-code)
-    (break [exit-code nil nil]))
+  (when (= :no-tests exit-code)
+    (break [:no-tests nil nil]))
   # successful run means no tests to update
   (when (zero? exit-code)
     (break [:no-updates nil test-results]))
@@ -4117,21 +4077,6 @@
     :no-tests
     (l/noten :i " - no tests found")
     #
-    :parse-error
-    (let [msg (o/color-msg "detected parse errors" :red)]
-      (l/notenf :w " - %s" msg)
-      (array/push (get noted-paths :parse) path))
-    #
-    :lint-error
-    (let [msg (o/color-msg "detected lint errors" :yellow)]
-      (l/notenf :w " - %s" msg)
-      (array/push (get noted-paths :lint) path))
-    #
-    :test-run-error
-    (let [msg (o/color-msg "test file had runtime errors" :yellow)]
-      (l/notenf :w " - %s" msg)
-      (array/push (get noted-paths :run) path))
-    #
     :no-updates
     (l/noten :i " - no tests needed updating")
     #
@@ -4159,8 +4104,7 @@
 (defn c/make-run-update
   [src-paths opts]
   (def excludes (get opts :excludes))
-  (def noted-paths @{:parse @[] :lint @[] :run @[]
-                     :update @[]})
+  (def noted-paths @{:update @[]})
   (def test-results @[])
   # generate tests, run tests, and update
   (each path src-paths
@@ -4192,7 +4136,7 @@
 
 ###########################################################################
 
-(def version "2026-01-20_08-48-15")
+(def version "2026-01-20_08-55-38")
 
 (def usage
   ``

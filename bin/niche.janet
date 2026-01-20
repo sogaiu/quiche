@@ -26,7 +26,12 @@
       (eachp [n v] locals
         (eprintf "    %s: %n" n v)))
     (when-let [e (get err :e-via-try)]
-      (eprintf "  e via try: %n" e))))
+      (eprintf "  e via try: %n" e))
+    (when-let [st (get err :stacktrace)]
+      (eprint "  stacktrace:")
+      (def lines (string/split "\n" st))
+      (each l lines
+        (eprint "    " l)))))
 
 
 (comment import ./files :prefix "")
@@ -189,10 +194,17 @@
   #
   (def head (get the-args 0))
   #
-  (when (or (= head "-h") (= head "--help")
+  (def help-types
+    {"--help" :usage
+     "-h" :usage
+     "-hh" :background
+     "-hhh" :tutorial
+     "-hhhh" :reference})
+  (def htype (get help-types head))
+  (when (or htype
             # might have been invoked with no paths in repository root
             (and (not head) (not (f/is-file? s/conf-file))))
-    (break @{:show-help true}))
+    (break @{:show-help htype}))
   #
   (when (or (= head "-v") (= head "--version")
             # might have been invoked with no paths in repository root
@@ -235,7 +247,8 @@
     (default right [])
     (distinct [;left ;right]))
   #
-  (merge opts
+  (merge {:overwrite true}
+         opts
          {:includes (merge-indexed includes (get opts :includes))
           :excludes (merge-indexed excludes (get opts :excludes))}))
 
@@ -248,22 +261,36 @@
   (a/parse-args ["src/main.janet"])
   # =>
   @{:excludes @[]
-    :includes @["src/main.janet"]}
+    :includes @["src/main.janet"]
+    :overwrite true}
 
   (a/parse-args ["-h"])
   # =>
-  @{:show-help true}
+  @{:show-help :usage}
 
-  (a/parse-args ["{:overwrite true}" "src/main.janet"])
+  (a/parse-args ["-hh"])
+  # =>
+  @{:show-help :background}
+
+  (a/parse-args ["-hhh"])
+  # =>
+  @{:show-help :tutorial}
+
+  (a/parse-args ["-hhhh"])
+  # =>
+  @{:show-help :reference}
+
+  (a/parse-args ["{:overwrite false}" "src/main.janet"])
   # =>
   @{:excludes @[]
     :includes @["src/main.janet"]
-    :overwrite true}
+    :overwrite false}
 
   (a/parse-args [`{:excludes ["src/args.janet"]}` "src/main.janet"])
   # =>
   @{:excludes @["src/args.janet"]
-    :includes @["src/main.janet"]}
+    :includes @["src/main.janet"]
+    :overwrite true}
 
   (setdyn :test/color? old-value)
 
@@ -3863,9 +3890,9 @@
   (def b {:in "make-tests" :args {:in-path in-path :opts opts}})
   #
   (def src (slurp in-path))
-  (def [ok? _] (protect (parse-all src)))
+  (def [ok? result] (protect (parse-all src)))
   (when (not ok?)
-    (break :parse-error))
+    (e/emf b "parse error: %s" result))
   #
   (def test-src (r/rewrite-as-test-file src))
   (when (not test-src)
@@ -3956,30 +3983,14 @@
 
   )
 
-(defn t/make-lint-path
-  [in-path]
-  #
-  (string (t/make-test-path in-path) "-lint"))
-
-(comment
-
-  (t/make-lint-path "tmp/hello.janet")
-  # =>
-  "tmp/_hello.janet.niche-lint"
-
-  )
-
-(defn t/lint-and-get-error
-  [input]
-  (def lint-path (t/make-lint-path input))
-  (defer (os/rm lint-path)
-    (def lint-src (r/rewrite-as-file-to-lint (slurp input)))
-    (spit lint-path lint-src)
-    (def lint-buf @"")
-    (with-dyns [:err lint-buf] (flycheck lint-path))
-    # XXX: peg may need work
-    (peg/match ~(sequence "error: " (to ":") (capture (to "\n")))
-               lint-buf)))
+# example of first line of err-str:
+#
+#   error: d/_n.janet.niche:142:38: compile error: unknown symbol _
+(defn t/parse-error
+  [err-str]
+  (peg/match ~(sequence (thru "error: ")
+                        (capture (to "\n")))
+             err-str))
 
 (defn t/has-unreadable?
   [test-results]
@@ -4012,12 +4023,16 @@
   (def test-path result)
   # run tests and collect output
   (def [exit-code out err] (t/run-tests test-path))
-  (os/rm test-path)
   #
   (when (empty? out)
-    (if (t/lint-and-get-error input)
-      (break [:lint-error nil nil nil])
-      (break [:test-run-error nil nil nil])))
+    (when (t/parse-error err)
+      (def extra (if (os/getenv "VERBOSE")
+                   "see stacktrace below"
+                   "rerun with VERBOSE=1 for details"))
+      (e/emf (merge b {:stacktrace err})
+             "error running test file, %s" extra)))
+  #
+  (os/rm test-path)
   #
   (def [test-results test-out] (t/parse-output out))
   (when-let [unreadable (t/has-unreadable? test-results)]
@@ -4045,25 +4060,7 @@
                 n-ps-paths))
     (when (not (empty? fl-paths))
       (l/notenf :i "Test failures in %d of %d file(s)."
-                n-fl-paths (+ n-fl-paths n-ps-paths))))
-  # errors
-  (def p-paths (get noted-paths :parse))
-  (def l-paths (get noted-paths :lint))
-  (def r-paths (get noted-paths :run))
-  (def err-paths [p-paths l-paths r-paths])
-  #
-  (when (some |(not (empty? $)) err-paths)
-    (def num-skipped (sum (map length err-paths)))
-    (l/notenf :w "Skipped %d files(s)." num-skipped))
-  (when (not (empty? p-paths))
-    (l/notenf :w "%s: parse error(s) detected in %d file(s)."
-              (o/color-msg "WARNING" :red) (length p-paths)))
-  (when (not (empty? l-paths))
-    (l/notenf :w "%s: linting error(s) detected in %d file(s)."
-              (o/color-msg "WARNING" :yellow) (length l-paths)))
-  (when (not (empty? r-paths))
-    (l/notenf :w "%s: runtime error(s) detected for %d file(s)."
-              (o/color-msg "WARNING" :yellow) (length r-paths))))
+                n-fl-paths (+ n-fl-paths n-ps-paths)))))
 
 ########################################################################
 
@@ -4072,10 +4069,8 @@
   # try to make and run tests, then collect output
   (def [exit-code test-results test-out test-err]
     (t/make-and-run input opts))
-  (when (get (invert [:no-tests
-                      :parse-error :lint-error :test-run-error])
-             exit-code)
-    (break [exit-code nil nil]))
+  (when (= :no-tests exit-code)
+    (break [:no-tests nil nil]))
   #
   (def {:report report} opts)
   (default report o/report)
@@ -4097,21 +4092,6 @@
     :no-tests
     (l/noten :i " - no tests found")
     #
-    :parse-error
-    (let [msg (o/color-msg "detected parse errors" :red)]
-      (l/notenf :w " - %s" msg)
-      (array/push (get noted-paths :parse) path))
-    #
-    :lint-error
-    (let [msg (o/color-msg "detected lint errors" :yellow)]
-      (l/notenf :w " - %s" msg)
-      (array/push (get noted-paths :lint) path))
-    #
-    :test-run-error
-    (let [msg (o/color-msg "test file had runtime errors" :yellow)]
-      (l/notenf :w " - %s" msg)
-      (array/push (get noted-paths :run) path))
-    #
     :no-fails
     (let [n-tests (get tr :num-tests)
           ratio (o/color-ratio n-tests n-tests)]
@@ -4130,8 +4110,7 @@
 (defn c/make-run-report
   [src-paths opts]
   (def excludes (get opts :excludes))
-  (def noted-paths @{:parse @[] :lint @[] :run @[]
-                     :pass @[] :fail @[]})
+  (def noted-paths @{:pass @[] :fail @[]})
   (def test-results @[])
   # generate tests, run tests, and report
   (each path src-paths
@@ -4150,6 +4129,439 @@
   [exit-code test-results])
 
 
+(comment import ./docs :prefix "")
+(def d/usage
+  ``
+  Usage: niche [<file-or-dir>...]
+
+         niche [--help|[-h[h[h[h]]]]]
+         niche [-v|--version]
+
+  Nimbly Interpret Comment-Hidden Expressions
+
+  Parameters:
+
+    <file-or-dir>          path to file or directory
+
+  Options:
+
+    -h, --help             show this output
+    -hh                    show background material
+    -hhh                   show tutorial
+    -hhhh                  show reference
+
+    -v, --version          show version information
+
+  Configuration:
+
+    .niche.jdn             configuration file
+
+  Example uses:
+
+    1. Create and run comment-hidden expression tests in `src/`
+       directory:
+
+       $ niche src
+
+    2. A configuration file (`.niche.jdn`) can be used to
+       specify paths to operate on and avoid spelling out paths
+       at the command line:
+
+       $ niche
+
+    3. `niche` can be used via `jeep`, `jpm`, etc. with some
+       setup.  In a project's root directory, create a suitable
+       `.niche.jdn` file and a runner file in the project's
+       `test/` subdirectory.  Then, in the case of `jeep`:
+
+       $ jeep test
+
+  Example `.niche.jdn` configuration file:
+
+    {# what to work on - file and dir paths
+     :includes ["src" "bin/my-script"]
+     # what to skip - file paths only
+     :excludes ["src/sample.janet"]}
+
+  Example runner file `test/trigger-niche.janet`:
+
+    # adjust the path as needed
+    (import ../niche) # niche.janet is in project root
+
+    (niche/main)
+  ``)
+
+(def d/background
+  ``
+  Background
+  ==========
+
+  Introduction
+  ------------
+
+  While developing a function [1], it is probably not too
+  uncommon to become curious about how the function in its
+  current state actually behaves.  In such a situation, it
+  seems likely one may end up calling the function with
+  specific arguments to observe the results.
+
+  This process of calling the function as it is developed may
+  be repeated multiple times.  It is a curious thing that it is
+  not unusual for these calls and their results to be
+  discarded and subsequently to manually enter some of them
+  again.
+
+  What if it were very easy to keep these around and
+  conveniently re-execute them to check their results as the
+  function in question is worked on?  Perhaps even retaining
+  these saved "calls with their results" afterwards to use for
+  automated testing?
+
+  `niche` is a tool for Janet code to help with this [2].
+
+  Brief Explanation
+  -----------------
+
+  The basic idea is to place appropriate expressions within
+  `comment` forms, apply `niche` to evaluate them, and
+  interpret the results.  A simple example of the type of
+  `comment` form mentioned is:
+
+    (comment
+
+      (function-to-test arg1 arg2)
+      # =>
+      :expected-value
+
+      )
+
+  The content of such `comment` forms is sometimes referred to
+  as "comment-hidden expressions".
+
+  About the Name
+  --------------
+
+  The name `niche` is short for:
+
+    "Nimbly Interpret Comment-Hidden Expressions"
+
+  Goals and Non-goals
+  -------------------
+
+  It is a non-goal of `niche` to be a comprehensive testing
+  tool.  It's more meant to:
+
+  * aid early and exploratory development,
+
+  * provide a way to record testable illustrative examples
+    for future code readers, and
+
+  * be used alongside other testing tools and libraries
+
+  Further Information
+  -------------------
+
+  See the tutorial and/or reference documentation for further
+  details.
+
+  The source code for `niche` (in the `src` directory of the
+  repository) contains tests for `niche` itself using
+  comment-hidden expressions.
+
+  [1] ...or macro or just some expression.
+
+  [2] It's definitely not the first of its kind to provide some
+  support for this idea.  The earliest the author has found for
+  a similar idea goes back to 2008 for the Racket language
+  (`eli-tester`), but it seems unlikely that there were no
+  other attempts.
+
+  Niche is the fifth incarnation in a series of tools for Janet
+  going back to 2020, starting with judge-gen.
+  ``)
+
+(def d/tutorial
+  ``
+  Tutorial
+  ========
+
+  This is a tutorial that introduces basics.  Please see the
+  reference documentation for further details.
+
+  Expressing Tests
+  ----------------
+
+  Create a file named `smile.janet` and put the following
+  content in it:
+
+    (comment
+
+      (+ 1 2)
+      # =>
+      3
+
+      )
+
+  Some things to note:
+
+  1. There is a surrounding `comment` form.
+
+  2. There is an instance of `# =>` that indicates the presence
+     of a test.
+
+  3. The expression above `# =>` is intended to compute an
+     "actual" value.
+
+  4. The expression below `# =>` is intended to compute an
+     "expected" value.
+
+  So to express a test, put an expression to "test" which
+  computes an "actual" value before another expression which is
+  used to arrive at an expected value, and separate them by an
+  instance of `# =>` on a line of its own.
+
+  Some terminology:
+
+  1. `# =>` is sometimes referred to as a "test indicator".
+     It is modeled after sequences of characters sometimes used
+     in various lisp communities to express "what comes before
+     evaluates to what comes after".
+
+  2. Expressions within the `comment` form may sometimes be
+     referred to as "comment-hidden expressions".
+
+  The use of the `comment` form means:
+
+  1. The content doesn't really affect the meaning of existing
+     code in a file according to `janet`.
+
+  2. We can start writing tests without installing `niche`.
+     Expressions can still be evaluated by "sending" them to a
+     REPL, either via editor tooling or by copy-pasting.
+
+  3. Your code doesn't gain any additional library dependencies,
+     whether `niche` is installed or not.
+
+  Using the `niche` tool
+  ----------------------
+
+  Re-evaluating things manually can get old pretty quickly
+  though so obtaining `niche.janet` and putting or symlinking it
+  on your `PATH` is recommended for convenience.
+
+  To run the tests, pass the path of the file with the `comment`
+  form in it to `niche`:
+
+    $ niche.janet smile.janet
+
+  or if you created a symlink to `niche.janet` named `niche`:
+
+    $ niche smile.janet
+
+  Interpreting `niche` output
+  ---------------------------
+
+  If all went well, the following sort of output should appear:
+
+    smile.janet - [1/1]
+    ===================================================
+    All tests successful in 1 file(s).
+    Total processing time was 0.00 secs.
+
+  Try changing the expected value from `3` to `11` in
+  `smile.janet` like:
+
+    (comment
+
+      (+ 1 2)
+      # =>
+      11
+
+      )
+
+  Now run `niche` again:
+
+    $ niche smile.janet
+
+  The output should look something like:
+
+    smile.janet
+    ---------------------------------------------------
+    [1]
+
+    failed:
+    line 4
+
+    form:
+    (+ 1 2)
+
+    expected:
+    11
+
+    actual:
+    3
+    ---------------------------------------------------
+    [0/1]
+    ===================================================
+    Test failures in 1 of 1 file(s).
+    Total processing time was 0.00 secs.
+
+  It may be obvious but to spell things out a bit:
+
+  * The "smile.janet" at the top indicates which file the
+    immediately following information refers to.
+
+  * There are two "dashed" separators (made up of the `-`
+    character) that "bound" the failure results for
+    "smile.janet".
+
+  * The "[1]" indicates that what follows immediately is the
+    first faliure in the file.
+
+  * The "line 4" portion under "failed:" refers to where the
+    test indicator (`# =>`) is in the file.  This can be useful
+    information when navigating to the relevant code in the
+    source file.
+
+  * The "form:" portion labels what expression was evaluated to
+    arrive at the actual value computed.
+
+  * The "expected:" portion labels what value was expected.
+
+  * The "actual:" portion labels what value was actually
+    computed.
+
+  * The "[0/1]" indicates that no tests passed out of a total of
+    one test detected for the file.
+
+  * The portions below the separator made up of `=` characters
+    summarize the number of failures detected, the total number
+    of associated files with failures, and the total processing
+    time.
+
+  There are some more details that were not covered such as:
+
+  * Multiple test expressions can live in a single `comment`
+    form.
+
+  * Each `comment` can also contain non-test expressions.
+
+  * A `comment` form that has no tests is ignored by `niche`.
+
+  These and other details are covered in the reference
+  documentation.
+  ``)
+
+(def d/reference
+  ``
+  Reference
+  =========
+
+  Anatomy of a Test
+  -----------------
+
+  Tests lives inside `comment` forms.  A simple example is:
+
+    (comment
+
+      (+ 1 2)
+      # =>
+      3
+
+      )
+
+  A general description might be:
+
+    (comment
+
+      <actual-value-expression>
+      <test-indicator>
+      <expected-value-expression>
+
+      )
+
+  `<actual-value-expression>` is used to compute an "actual"
+  value.  The expression may span multiple lines.
+
+  The result value is compared using `deep=` with the result
+  of computing `<expected-value-expression>` (which may also
+  span multiple lines).
+
+  `<test-indicator>` is the sequence of characters `# =>`.
+  (Some other sequences may work, but only `# =>` is intended
+  for general consumption at the moment.)
+
+  Each test indicator should live on a line of its own.  The
+  line number that a test indicator is on is used to report
+  failing tests.
+
+  Some More Details
+  -----------------
+
+  * Multiple tests may appear within a single `comment` form.
+    They are evaluated in order.
+
+  * Forms that are not part of any test may also occur within
+    `comment` forms.  These will also be evaluated in order
+    but only if the containing `comment` form has at least one
+    test in it.  This is done so that "ordinary" `comment`
+    forms that existed prior to `niche`'s existence are not
+    accidentally executed.
+
+  * The expressions within `comment` forms that have tests in
+    them are executed in order, interleaved with other
+    non-comment expressions in the file.  There is no
+    isolation between `comment` forms for the sake of
+    simplicity.
+
+  * Evaluation of expressions within `comment` forms with tests
+    occur as if they were at the top-level.  That is, it is
+    as if the wrapping of `(comment ...)` is removed and only
+    `...` remains for evaluation.
+
+  Limits on Expected Value Expressions
+  ------------------------------------
+
+  * Since expected value expressions get evaluated, if one
+    wishes to express a tuple value, it is recommended to use
+    either square bracket tuples or to quote paren tuples.
+    Using just paren tuples will likely yield an inappropriate
+    result because the expression will be treated as a call.
+
+  * Only expressions that produce "readable" values are
+    supported for actual value and expected value expressions.
+    So expressions that produce non-readable values such as
+    `printf` (which would yield `<cfunction printf>`) may
+    appear to work sometimes, but not in all cases.
+
+  * Since `deep=` is used to compare values, be careful when
+    trying to compare dictionaries that have prototype values.
+    The prototype information is not typically exposed as part
+    of a dictionary's printed representation.  If desired,
+    check prototype information using suitable expressions.
+
+  Disabling Tests
+  ---------------
+
+  * Putting a space character between the `=` and `>` of a
+    test indicator will disable the corresponding test.
+    However, the associated actual and expected value
+    expressions will still be evaluated.
+
+  * Putting a space between the `(` and `c` characters for a
+    `(comment ...)` form will prevent any of the expressions
+    within the `comment` form from being executed.
+  ``)
+
+(defn d/choose-doc
+  [doc-type]
+  (get {:usage d/usage
+        :reference d/reference
+        :tutorial d/tutorial
+        :background d/background}
+       doc-type d/usage))
+
+
 (comment import ./errors :prefix "")
 
 (comment import ./files :prefix "")
@@ -4159,70 +4571,7 @@
 (comment import ./output :prefix "")
 
 
-###########################################################################
-
-(def version "2026-01-13_03-50-18")
-
-(def usage
-  ``
-  Usage: niche [<file-or-dir>...]
-         niche [-h|--help] [-v|--version]
-
-  Nimbly Inspect Comment-Hidden Expressions
-
-  Parameters:
-
-    <file-or-dir>          path to file or directory
-
-  Options:
-
-    -h, --help             show this output
-    -v, --version          show version information
-
-  Configuration:
-
-    .niche.jdn             configuration file
-
-  Examples:
-
-    Create and run tests in `src/` directory:
-
-    $ niche src
-
-    `niche` can be used via `jpm`, `jeep`, etc. with
-    some one-time setup.  Create a suitable `.niche.jdn`
-    file in a project's root directory and a runner
-    file in a project's `test/` subdirectory (see below
-    for further details).
-
-    Run via `jeep test`:
-
-    $ jeep test
-
-    Run via `jpm test`:
-
-    $ jpm test
-
-    Run using the configuration file via direct
-    invocation:
-
-    $ niche
-
-  Example `.niche.jdn` content:
-
-    {# what to work on - file and dir paths
-     :includes ["src" "bin/my-script"]
-     # what to skip - file paths only
-     :excludes ["src/sample.janet"]}
-
-  Example runner file `test/trigger-niche.janet`:
-
-    (import ../niche)
-
-    (niche/main)
-  ``)
-
-########################################################################
+(def version "2026-01-20_08-38-13")
 
 (defn main
   [& args]
@@ -4230,8 +4579,9 @@
   #
   (def opts (a/parse-args (drop 1 args)))
   #
-  (when (get opts :show-help)
-    (l/noten :o usage)
+  (when-let [htype (get opts :show-help)
+             doc (d/choose-doc htype)]
+    (l/noten :o doc)
     (os/exit 0))
   #
   (when (get opts :show-version)

@@ -9,53 +9,20 @@
 
 (defn summarize
   [noted-paths]
-  # pass / fail
-  (def ps-paths (get noted-paths :pass))
-  (def fl-paths (get noted-paths :fail))
-  # errors
-  (def p-paths (get noted-paths :parse))
-  (def l-paths (get noted-paths :lint))
-  (def r-paths (get noted-paths :run))
-  (def err-paths [p-paths l-paths r-paths])
-  #
-  (when fl-paths
-    (def n-ps-paths (length ps-paths))
-    (def n-fl-paths (length fl-paths))
-    (when (and (empty? fl-paths) (empty? err-paths))
-      (l/notenf :i "All tests successful in %d file(s)."
-                n-ps-paths))
-    (when (not (empty? fl-paths))
-      (l/notenf :i "Test failures in %d of %d file(s)."
-                n-fl-paths (+ n-fl-paths n-ps-paths))))
   # updated
   (def upd-paths (get noted-paths :update))
   #
   (when upd-paths
     (def n-upd-paths (length upd-paths))
-    (l/notenf :i "Test(s) updated in %d file(s)." n-upd-paths))
-  #
-  (when (some |(not (empty? $)) err-paths)
-    (def num-skipped (sum (map length err-paths)))
-    (l/notenf :w "Skipped %d files(s)." num-skipped))
-  (when (not (empty? p-paths))
-    (l/notenf :w "%s: parse error(s) detected in %d file(s)."
-              (o/color-msg "WARNING" :red) (length p-paths)))
-  (when (not (empty? l-paths))
-    (l/notenf :w "%s: linting error(s) detected in %d file(s)."
-              (o/color-msg "WARNING" :yellow) (length l-paths)))
-  (when (not (empty? r-paths))
-    (l/notenf :w "%s: runtime error(s) detected for %d file(s)."
-              (o/color-msg "WARNING" :yellow) (length r-paths))))
+    (l/notenf :i "Test(s) updated in %d file(s)." n-upd-paths)))
 
 (defn mru-single
   [input &opt opts]
   (def b @{:in "mru-single" :args {:input input :opts opts}})
   # try to make and run tests, then collect output
   (def [exit-code test-results _ _] (t/make-and-run input opts))
-  (when (get (invert [:no-tests
-                      :parse-error :lint-error :test-run-error])
-             exit-code)
-    (break [exit-code nil nil]))
+  (when (= :no-tests exit-code)
+    (break [:no-tests nil nil]))
   # successful run means no tests to update
   (when (zero? exit-code)
     (break [:no-updates nil test-results]))
@@ -90,21 +57,6 @@
     :no-tests
     (l/noten :i " - no tests found")
     #
-    :parse-error
-    (let [msg (o/color-msg "detected parse errors" :red)]
-      (l/notenf :w " - %s" msg)
-      (array/push (get noted-paths :parse) path))
-    #
-    :lint-error
-    (let [msg (o/color-msg "detected lint errors" :yellow)]
-      (l/notenf :w " - %s" msg)
-      (array/push (get noted-paths :lint) path))
-    #
-    :test-run-error
-    (let [msg (o/color-msg "test file had runtime errors" :yellow)]
-      (l/notenf :w " - %s" msg)
-      (array/push (get noted-paths :run) path))
-    #
     :no-updates
     (l/noten :i " - no tests needed updating")
     #
@@ -132,8 +84,7 @@
 (defn make-run-update
   [src-paths opts]
   (def excludes (get opts :excludes))
-  (def noted-paths @{:parse @[] :lint @[] :run @[]
-                     :update @[]})
+  (def noted-paths @{:update @[]})
   (def test-results @[])
   # generate tests, run tests, and update
   (each path src-paths

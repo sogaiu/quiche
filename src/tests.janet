@@ -23,9 +23,9 @@
   (def b {:in "make-tests" :args {:in-path in-path :opts opts}})
   #
   (def src (slurp in-path))
-  (def [ok? _] (protect (parse-all src)))
+  (def [ok? result] (protect (parse-all src)))
   (when (not ok?)
-    (break :parse-error))
+    (e/emf b "parse error: %s" result))
   #
   (def test-src (r/rewrite-as-test-file src))
   (when (not test-src)
@@ -116,30 +116,14 @@
 
   )
 
-(defn make-lint-path
-  [in-path]
-  #
-  (string (make-test-path in-path) "-lint"))
-
-(comment
-
-  (make-lint-path "tmp/hello.janet")
-  # =>
-  "tmp/_hello.janet.niche-lint"
-
-  )
-
-(defn lint-and-get-error
-  [input]
-  (def lint-path (make-lint-path input))
-  (defer (os/rm lint-path)
-    (def lint-src (r/rewrite-as-file-to-lint (slurp input)))
-    (spit lint-path lint-src)
-    (def lint-buf @"")
-    (with-dyns [:err lint-buf] (flycheck lint-path))
-    # XXX: peg may need work
-    (peg/match ~(sequence "error: " (to ":") (capture (to "\n")))
-               lint-buf)))
+# example of first line of err-str:
+#
+#   error: d/_n.janet.niche:142:38: compile error: unknown symbol _
+(defn parse-error
+  [err-str]
+  (peg/match ~(sequence (thru "error: ")
+                        (capture (to "\n")))
+             err-str))
 
 (defn has-unreadable?
   [test-results]
@@ -172,12 +156,16 @@
   (def test-path result)
   # run tests and collect output
   (def [exit-code out err] (run-tests test-path))
-  (os/rm test-path)
   #
   (when (empty? out)
-    (if (lint-and-get-error input)
-      (break [:lint-error nil nil nil])
-      (break [:test-run-error nil nil nil])))
+    (when (parse-error err)
+      (def extra (if (os/getenv "VERBOSE")
+                   "see stacktrace below"
+                   "rerun with VERBOSE=1 for details"))
+      (e/emf (merge b {:stacktrace err})
+             "error running test file, %s" extra)))
+  #
+  (os/rm test-path)
   #
   (def [test-results test-out] (parse-output out))
   (when-let [unreadable (has-unreadable? test-results)]

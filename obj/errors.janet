@@ -22,5 +22,10 @@
       (eachp [n v] locals
         (eprintf "    %s: %n" n v)))
     (when-let [e (get err :e-via-try)]
-      (eprintf "  e via try: %n" e))))
+      (eprintf "  e via try: %n" e))
+    (when-let [st (get err :stacktrace)]
+      (eprint "  stacktrace:")
+      (def lines (string/split "\n" st))
+      (each l lines
+        (eprint "    " l)))))
 
