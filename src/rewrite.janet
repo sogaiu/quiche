@@ -488,7 +488,7 @@
                  # XXX: use `attrs` here?
                  ti-line-no ((get (j/node ti-zloc) 1) :bl)
                  test-label
-                 (string/format `"%s"`
+                 (string/format "%q"
                                 (make-label label-left label-right))]
              (set found-test true)
              (wrap-as-test-call start-zloc end-zloc

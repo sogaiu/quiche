@@ -12,12 +12,12 @@
   #
   (when (or (= head "-h") (= head "--help")
             # might have been invoked with no paths in repository root
-            (and (not head) (not (f/is-file? s/conf-file))))
+            (and (not head) (not (f/is-file? s/default-conf-file))))
     (break @{:show-help true}))
   #
   (when (or (= head "-v") (= head "--version")
             # might have been invoked with no paths in repository root
-            (and (not head) (not (f/is-file? s/conf-file))))
+            (and (not head) (not (f/is-file? s/default-conf-file))))
     (break @{:show-version true}))
   #
   (def opts
@@ -42,8 +42,8 @@
       (not (empty? the-args))
       [the-args @[]]
       # conf file
-      (f/is-file? s/conf-file)
-      (s/parse-conf-file s/conf-file)
+      (f/is-file? s/default-conf-file)
+      (s/parse-conf-file s/default-conf-file)
       #
       (e/emf b "unexpected result parsing args: %n" args)))
   #

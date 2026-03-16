@@ -1,9 +1,10 @@
 (import ./errors :as e)
 
-(def conf-file ".niche.jdn")
+(def default-conf-file ".niche.jdn")
 
 (defn parse-conf-file
-  [conf-file]
+  [&opt conf-file]
+  (default conf-file default-conf-file)
   (def b {:in "parse-conf-file" :args {:conf-file conf-file}})
   #
   (let [src (try (slurp conf-file)

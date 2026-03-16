@@ -1,33 +1,159 @@
+(comment import ./helpers :prefix "")
+# based on code by corasaurus-hex
+
+# `slice` doesn't necessarily preserve the input type
+
+# XXX: differs from clojure's behavior
+#      e.g. (butlast [:a]) would yield nil(?!) in clojure
+(defn h/butlast
+  [indexed]
+  (if (empty? indexed)
+    nil
+    (if (tuple? indexed)
+      (tuple/slice indexed 0 -2)
+      (array/slice indexed 0 -2))))
+
+(comment
+
+  (h/butlast @[:a :b :c])
+  # =>
+  @[:a :b]
+
+  (h/butlast [:a])
+  # =>
+  []
+
+  )
+
+(defn h/rest
+  [indexed]
+  (if (empty? indexed)
+    nil
+    (if (tuple? indexed)
+      (tuple/slice indexed 1 -1)
+      (array/slice indexed 1 -1))))
+
+(comment
+
+  (h/rest [:a :b :c])
+  # =>
+  [:b :c]
+
+  (h/rest @[:a])
+  # =>
+  @[]
+
+  )
+
+# XXX: can pass in array - will get back tuple
+(defn h/tuple-push
+  [tup x & xs]
+  (if tup
+    [;tup x ;xs]
+    [x ;xs]))
+
+(comment
+
+  (h/tuple-push [:a :b] :c)
+  # =>
+  [:a :b :c]
+
+  (h/tuple-push nil :a)
+  # =>
+  [:a]
+
+  (h/tuple-push @[] :a)
+  # =>
+  [:a]
+
+  )
+
+(defn h/to-entries
+  [val]
+  (if (dictionary? val)
+    (pairs val)
+    val))
+
+(comment
+
+  (sort (h/to-entries {:a 1 :b 2}))
+  # =>
+  @[[:a 1] [:b 2]]
+
+  (h/to-entries {})
+  # =>
+  @[]
+
+  (h/to-entries @{:a 1})
+  # =>
+  @[[:a 1]]
+
+  # XXX: leaving non-dictionaries alone and passing through...
+  #      is this desirable over erroring?
+  (h/to-entries [:a :b :c])
+  # =>
+  [:a :b :c]
+
+  )
+
+# XXX: when xs is empty, "all" becomes nil
+(defn h/first-rest-maybe-all
+  [xs]
+  (if (or (nil? xs) (empty? xs))
+    [nil nil nil]
+    [(first xs) (h/rest xs) xs]))
+
+(comment
+
+  (h/first-rest-maybe-all [:a :b])
+  # =>
+  [:a [:b] [:a :b]]
+
+  (h/first-rest-maybe-all @[:a])
+  # =>
+  [:a @[] @[:a]]
+
+  (h/first-rest-maybe-all [])
+  # =>
+  [nil nil nil]
+
+  # XXX: is this what we want?
+  (h/first-rest-maybe-all nil)
+  # =>
+  [nil nil nil]
+
+  )
+
+
+(comment import ./location :prefix "")
 # bl - begin line
 # bc - begin column
 # el - end line
 # ec - end column
-(defn make-attrs
+(defn l/make-attrs
   [& items]
   (zipcoll [:bl :bc :el :ec]
            items))
 
-(defn atom-node
+(defn l/atom-node
   [node-type peg-form]
   ~(cmt (capture (sequence (line) (column)
                            ,peg-form
                            (line) (column)))
-        ,|[node-type (make-attrs ;(slice $& 0 -2)) (last $&)]))
+        ,|[node-type (l/make-attrs ;(slice $& 0 -2)) (last $&)]))
 
-(defn reader-macro-node
+(defn l/reader-macro-node
   [node-type sigil]
   ~(cmt (capture (sequence (line) (column)
                            ,sigil
                            (any :non-form)
                            :form
                            (line) (column)))
-        ,|[node-type (make-attrs ;(slice $& 0 2) ;(slice $& -4 -2))
+        ,|[node-type (l/make-attrs ;(slice $& 0 2) ;(slice $& -4 -2))
            ;(slice $& 2 -4)]))
 
-(defn collection-node
+(defn l/collection-node
   [node-type open-delim close-delim]
-  # to avoid issues when transforming this file
-  (def replace_ (symbol "replace"))
   ~(cmt
      (capture
        (sequence
@@ -36,15 +162,15 @@
          (any :input)
          (choice ,close-delim
                  (error
-                   (,replace_ (sequence (line) (column))
-                              ,|(string/format
-                                  "line: %p column: %p missing %p for %p"
-                                  $0 $1 close-delim node-type))))
+                   (replace (sequence (line) (column))
+                            ,|(string/format
+                                "line: %p column: %p missing %p for %p"
+                                $0 $1 close-delim node-type))))
          (line) (column)))
-     ,|[node-type (make-attrs ;(slice $& 0 2) ;(slice $& -4 -2))
+     ,|[node-type (l/make-attrs ;(slice $& 0 2) ;(slice $& -4 -2))
         ;(slice $& 2 -4)]))
 
-(def loc-grammar
+(def l/loc-grammar
   ~@{:main (sequence (line) (column)
                      (some :input)
                      (line) (column))
@@ -55,7 +181,7 @@
      :non-form (choice :whitespace
                        :comment)
      #
-     :whitespace ,(atom-node :whitespace
+     :whitespace ,(l/atom-node :whitespace
                              '(choice (some (set " \0\f\t\v"))
                                       (choice "\r\n"
                                               "\r"
@@ -69,7 +195,7 @@
      #                         (line) (column)))
      #      ,|[:whitespace (make-attrs ;(slice $& 0 -2)) (last $&)])
      #
-     :comment ,(atom-node :comment
+     :comment ,(l/atom-node :comment
                           '(sequence "#"
                                      (any (if-not (set "\r\n") 1))))
      #
@@ -96,7 +222,7 @@
                    :keyword
                    :symbol)
      #
-     :fn ,(reader-macro-node :fn "|")
+     :fn ,(l/reader-macro-node :fn "|")
      # :fn (cmt (capture (sequence (line) (column)
      #                             "|"
      #                             (any :non-form)
@@ -105,15 +231,15 @@
      #          ,|[:fn (make-attrs ;(slice $& 0 2) ;(slice $& -4 -2))
      #             ;(slice $& 2 -4)])
      #
-     :quasiquote ,(reader-macro-node :quasiquote "~")
+     :quasiquote ,(l/reader-macro-node :quasiquote "~")
      #
-     :quote ,(reader-macro-node :quote "'")
+     :quote ,(l/reader-macro-node :quote "'")
      #
-     :splice ,(reader-macro-node :splice ";")
+     :splice ,(l/reader-macro-node :splice ";")
      #
-     :unquote ,(reader-macro-node :unquote ",")
+     :unquote ,(l/reader-macro-node :unquote ",")
      #
-     :array ,(collection-node :array "@(" ")")
+     :array ,(l/collection-node :array "@(" ")")
      # :array
      # (cmt
      #   (capture
@@ -131,17 +257,17 @@
      #   ,|[:array (make-attrs ;(slice $& 0 2) ;(slice $& -4 -2))
      #      ;(slice $& 2 -4)])
      #
-     :tuple ,(collection-node :tuple "(" ")")
+     :tuple ,(l/collection-node :tuple "(" ")")
      #
-     :bracket-array ,(collection-node :bracket-array "@[" "]")
+     :bracket-array ,(l/collection-node :bracket-array "@[" "]")
      #
-     :bracket-tuple ,(collection-node :bracket-tuple "[" "]")
+     :bracket-tuple ,(l/collection-node :bracket-tuple "[" "]")
      #
-     :table ,(collection-node :table "@{" "}")
+     :table ,(l/collection-node :table "@{" "}")
      #
-     :struct ,(collection-node :struct "{" "}")
+     :struct ,(l/collection-node :struct "{" "}")
      #
-     :number ,(atom-node :number
+     :number ,(l/atom-node :number
                          ~(drop (sequence (cmt (capture (some :num-char))
                                                ,scan-number)
                                           (opt (sequence ":" (range "AZ" "az"))))))
@@ -149,14 +275,14 @@
      :num-char (choice (range "09" "AZ" "az")
                        (set "&+-._"))
      #
-     :constant ,(atom-node :constant
+     :constant ,(l/atom-node :constant
                            '(sequence (choice "false" "nil" "true")
                                       (not :name-char)))
      #
      :name-char (choice (range "09" "AZ" "az" "\x80\xFF")
                         (set "!$%&*+-./:<?=>@^_"))
      #
-     :buffer ,(atom-node :buffer
+     :buffer ,(l/atom-node :buffer
                          '(sequence `@"`
                                     (any (choice :escape
                                                  (if-not "\"" 1)))
@@ -169,13 +295,13 @@
                                (sequence "U" (6 :h))
                                (error (constant "bad escape"))))
      #
-     :string ,(atom-node :string
+     :string ,(l/atom-node :string
                          '(sequence `"`
                                     (any (choice :escape
                                                  (if-not "\"" 1)))
                                     `"`))
      #
-     :long-string ,(atom-node :long-string
+     :long-string ,(l/atom-node :long-string
                               :long-bytes)
      #
      :long-bytes {:main (drop (sequence :open
@@ -188,107 +314,107 @@
                                         (capture (backmatch :n)))
                               ,=)}
      #
-     :long-buffer ,(atom-node :long-buffer
+     :long-buffer ,(l/atom-node :long-buffer
                               '(sequence "@" :long-bytes))
      #
-     :keyword ,(atom-node :keyword
+     :keyword ,(l/atom-node :keyword
                           '(sequence ":"
                                      (any :name-char)))
      #
-     :symbol ,(atom-node :symbol
+     :symbol ,(l/atom-node :symbol
                          '(some :name-char))
      })
 
 (comment
 
-  (get (peg/match loc-grammar " ") 2)
+  (get (peg/match l/loc-grammar " ") 2)
   # =>
   '(:whitespace @{:bc 1 :bl 1 :ec 2 :el 1} " ")
 
-  (get (peg/match loc-grammar "true?") 2)
+  (get (peg/match l/loc-grammar "true?") 2)
   # =>
   '(:symbol @{:bc 1 :bl 1 :ec 6 :el 1} "true?")
 
-  (get (peg/match loc-grammar "nil?") 2)
+  (get (peg/match l/loc-grammar "nil?") 2)
   # =>
   '(:symbol @{:bc 1 :bl 1 :ec 5 :el 1} "nil?")
 
-  (get (peg/match loc-grammar "false?") 2)
+  (get (peg/match l/loc-grammar "false?") 2)
   # =>
   '(:symbol @{:bc 1 :bl 1 :ec 7 :el 1} "false?")
 
-  (get (peg/match loc-grammar "# hi there") 2)
+  (get (peg/match l/loc-grammar "# hi there") 2)
   # =>
   '(:comment @{:bc 1 :bl 1 :ec 11 :el 1} "# hi there")
 
-  (get (peg/match loc-grammar "1_000_000") 2)
+  (get (peg/match l/loc-grammar "1_000_000") 2)
   # =>
   '(:number @{:bc 1 :bl 1 :ec 10 :el 1} "1_000_000")
 
-  (get (peg/match loc-grammar "8.3") 2)
+  (get (peg/match l/loc-grammar "8.3") 2)
   # =>
   '(:number @{:bc 1 :bl 1 :ec 4 :el 1} "8.3")
 
-  (get (peg/match loc-grammar "1e2") 2)
+  (get (peg/match l/loc-grammar "1e2") 2)
   # =>
   '(:number @{:bc 1 :bl 1 :ec 4 :el 1} "1e2")
 
-  (get (peg/match loc-grammar "0xfe") 2)
+  (get (peg/match l/loc-grammar "0xfe") 2)
   # =>
   '(:number @{:bc 1 :bl 1 :ec 5 :el 1} "0xfe")
 
-  (get (peg/match loc-grammar "2r01") 2)
+  (get (peg/match l/loc-grammar "2r01") 2)
   # =>
   '(:number @{:bc 1 :bl 1 :ec 5 :el 1} "2r01")
 
-  (get (peg/match loc-grammar "3r101&01") 2)
+  (get (peg/match l/loc-grammar "3r101&01") 2)
   # =>
   '(:number @{:bc 1 :bl 1 :ec 9 :el 1} "3r101&01")
 
-  (get (peg/match loc-grammar "2:u") 2)
+  (get (peg/match l/loc-grammar "2:u") 2)
   # =>
   '(:number @{:bc 1 :bl 1 :ec 4 :el 1} "2:u")
 
-  (get (peg/match loc-grammar "-8:s") 2)
+  (get (peg/match l/loc-grammar "-8:s") 2)
   # =>
   '(:number @{:bc 1 :bl 1 :ec 5 :el 1} "-8:s")
 
-  (get (peg/match loc-grammar "1e2:n") 2)
+  (get (peg/match l/loc-grammar "1e2:n") 2)
   # =>
   '(:number @{:bc 1 :bl 1 :ec 6 :el 1} "1e2:n")
 
-  (get (peg/match loc-grammar "printf") 2)
+  (get (peg/match l/loc-grammar "printf") 2)
   # =>
   '(:symbol @{:bc 1 :bl 1 :ec 7 :el 1} "printf")
 
-  (get (peg/match loc-grammar ":smile") 2)
+  (get (peg/match l/loc-grammar ":smile") 2)
   # =>
   '(:keyword @{:bc 1 :bl 1 :ec 7 :el 1} ":smile")
 
-  (get (peg/match loc-grammar `"fun"`) 2)
+  (get (peg/match l/loc-grammar `"fun"`) 2)
   # =>
   '(:string @{:bc 1 :bl 1 :ec 6 :el 1} "\"fun\"")
 
-  (get (peg/match loc-grammar "``long-fun``") 2)
+  (get (peg/match l/loc-grammar "``long-fun``") 2)
   # =>
   '(:long-string @{:bc 1 :bl 1 :ec 13 :el 1} "``long-fun``")
 
-  (get (peg/match loc-grammar "@``long-buffer-fun``") 2)
+  (get (peg/match l/loc-grammar "@``long-buffer-fun``") 2)
   # =>
   '(:long-buffer @{:bc 1 :bl 1 :ec 21 :el 1} "@``long-buffer-fun``")
 
-  (get (peg/match loc-grammar `@"a buffer"`) 2)
+  (get (peg/match l/loc-grammar `@"a buffer"`) 2)
   # =>
   '(:buffer @{:bc 1 :bl 1 :ec 12 :el 1} "@\"a buffer\"")
 
-  (get (peg/match loc-grammar "@[8]") 2)
+  (get (peg/match l/loc-grammar "@[8]") 2)
   # =>
   '(:bracket-array @{:bc 1 :bl 1
                      :ec 5 :el 1}
                    (:number @{:bc 3 :bl 1
                               :ec 4 :el 1} "8"))
 
-  (get (peg/match loc-grammar "@{:a 1}") 2)
+  (get (peg/match l/loc-grammar "@{:a 1}") 2)
   # =>
   '(:table @{:bc 1 :bl 1
              :ec 8 :el 1}
@@ -299,14 +425,14 @@
            (:number @{:bc 6 :bl 1
                       :ec 7 :el 1} "1"))
 
-  (get (peg/match loc-grammar "~x") 2)
+  (get (peg/match l/loc-grammar "~x") 2)
   # =>
   '(:quasiquote @{:bc 1 :bl 1
                   :ec 3 :el 1}
                 (:symbol @{:bc 2 :bl 1
                            :ec 3 :el 1} "x"))
 
-  (get (peg/match loc-grammar "' '[:a :b]") 2)
+  (get (peg/match l/loc-grammar "' '[:a :b]") 2)
   # =>
   '(:quote @{:bc 1 :bl 1
              :ec 11 :el 1}
@@ -325,34 +451,34 @@
 
   )
 
-(def loc-top-level-ast
-  (put (table ;(kvs loc-grammar))
+(def l/loc-top-level-ast
+  (put (table ;(kvs l/loc-grammar))
        :main ~(sequence (line) (column)
                         :input
                         (line) (column))))
 
-(defn par
+(defn l/par
   [src &opt start single]
   (default start 0)
   (if single
     (if-let [[bl bc tree el ec]
-             (peg/match loc-top-level-ast src start)]
-      @[:code (make-attrs bl bc el ec) tree]
+             (peg/match l/loc-top-level-ast src start)]
+      @[:code (l/make-attrs bl bc el ec) tree]
       @[:code])
-    (if-let [captures (peg/match loc-grammar src start)]
+    (if-let [captures (peg/match l/loc-grammar src start)]
       (let [[bl bc] (slice captures 0 2)
             [el ec] (slice captures -3)
             trees (array/slice captures 2 -3)]
         (array/insert trees 0
-                      :code (make-attrs bl bc el ec)))
+                      :code (l/make-attrs bl bc el ec)))
       @[:code])))
 
 # XXX: backward compatibility
-(def ast par)
+(def l/ast l/par)
 
 (comment
 
-  (par "(+ 1 1)")
+  (l/par "(+ 1 1)")
   # =>
   '@[:code @{:bc 1 :bl 1
              :ec 8 :el 1}
@@ -371,12 +497,12 @@
 
   )
 
-(defn gen*
+(defn l/gen*
   [an-ast buf]
   (case (first an-ast)
     :code
     (each elt (drop 2 an-ast)
-      (gen* elt buf))
+      (l/gen* elt buf))
     #
     :buffer
     (buffer/push-string buf (in an-ast 2))
@@ -403,96 +529,96 @@
     (do
       (buffer/push-string buf "@(")
       (each elt (drop 2 an-ast)
-        (gen* elt buf))
+        (l/gen* elt buf))
       (buffer/push-string buf ")"))
     :bracket-array
     (do
       (buffer/push-string buf "@[")
       (each elt (drop 2 an-ast)
-        (gen* elt buf))
+        (l/gen* elt buf))
       (buffer/push-string buf "]"))
     :bracket-tuple
     (do
       (buffer/push-string buf "[")
       (each elt (drop 2 an-ast)
-        (gen* elt buf))
+        (l/gen* elt buf))
       (buffer/push-string buf "]"))
     :tuple
     (do
       (buffer/push-string buf "(")
       (each elt (drop 2 an-ast)
-        (gen* elt buf))
+        (l/gen* elt buf))
       (buffer/push-string buf ")"))
     :struct
     (do
       (buffer/push-string buf "{")
       (each elt (drop 2 an-ast)
-        (gen* elt buf))
+        (l/gen* elt buf))
       (buffer/push-string buf "}"))
     :table
     (do
       (buffer/push-string buf "@{")
       (each elt (drop 2 an-ast)
-        (gen* elt buf))
+        (l/gen* elt buf))
       (buffer/push-string buf "}"))
     #
     :fn
     (do
       (buffer/push-string buf "|")
       (each elt (drop 2 an-ast)
-        (gen* elt buf)))
+        (l/gen* elt buf)))
     :quasiquote
     (do
       (buffer/push-string buf "~")
       (each elt (drop 2 an-ast)
-        (gen* elt buf)))
+        (l/gen* elt buf)))
     :quote
     (do
       (buffer/push-string buf "'")
       (each elt (drop 2 an-ast)
-        (gen* elt buf)))
+        (l/gen* elt buf)))
     :splice
     (do
       (buffer/push-string buf ";")
       (each elt (drop 2 an-ast)
-        (gen* elt buf)))
+        (l/gen* elt buf)))
     :unquote
     (do
       (buffer/push-string buf ",")
       (each elt (drop 2 an-ast)
-        (gen* elt buf)))
+        (l/gen* elt buf)))
     ))
 
-(defn gen
+(defn l/gen
   [an-ast]
   (let [buf @""]
-    (gen* an-ast buf)
+    (l/gen* an-ast buf)
     # XXX: leave as buffer?
     (string buf)))
 
 # XXX: backward compatibility
-(def code gen)
+(def l/code l/gen)
 
 (comment
 
-  (gen
+  (l/gen
     [:code])
   # =>
   ""
 
-  (gen
+  (l/gen
     '(:whitespace @{:bc 1 :bl 1
                     :ec 2 :el 1} " "))
   # =>
   " "
 
-  (gen
+  (l/gen
     '(:buffer @{:bc 1 :bl 1
                 :ec 12 :el 1} "@\"a buffer\""))
   # =>
   `@"a buffer"`
 
-  (gen
+  (l/gen
     '@[:code @{:bc 1 :bl 1
                :ec 8 :el 1}
        (:tuple @{:bc 1 :bl 1
@@ -516,7 +642,7 @@
 
   (def src "{:x  :y \n :z  [:a  :b    :c]}")
 
-  (gen (par src))
+  (l/gen (l/par src))
   # =>
   src
 
@@ -529,138 +655,18 @@
     (let [src (slurp (string (os/getenv "HOME")
                              "/src/janet/src/boot/boot.janet"))]
       (= (string src)
-         (gen (par src))))
+         (l/gen (l/par src))))
 
     )
 
   )
 
-########################################################################
 
-# based on code by corasaurus-hex
+(def version "2026-03-16_05-49-06")
 
-# `slice` doesn't necessarily preserve the input type
-
-# XXX: differs from clojure's behavior
-#      e.g. (butlast [:a]) would yield nil(?!) in clojure
-(defn butlast
-  [indexed]
-  (if (empty? indexed)
-    nil
-    (if (tuple? indexed)
-      (tuple/slice indexed 0 -2)
-      (array/slice indexed 0 -2))))
-
-(comment
-
-  (butlast @[:a :b :c])
-  # =>
-  @[:a :b]
-
-  (butlast [:a])
-  # =>
-  []
-
-  )
-
-(defn rest
-  [indexed]
-  (if (empty? indexed)
-    nil
-    (if (tuple? indexed)
-      (tuple/slice indexed 1 -1)
-      (array/slice indexed 1 -1))))
-
-(comment
-
-  (rest [:a :b :c])
-  # =>
-  [:b :c]
-
-  (rest @[:a])
-  # =>
-  @[]
-
-  )
-
-# XXX: can pass in array - will get back tuple
-(defn tuple-push
-  [tup x & xs]
-  (if tup
-    [;tup x ;xs]
-    [x ;xs]))
-
-(comment
-
-  (tuple-push [:a :b] :c)
-  # =>
-  [:a :b :c]
-
-  (tuple-push nil :a)
-  # =>
-  [:a]
-
-  (tuple-push @[] :a)
-  # =>
-  [:a]
-
-  )
-
-(defn to-entries
-  [val]
-  (if (dictionary? val)
-    (pairs val)
-    val))
-
-(comment
-
-  (sort (to-entries {:a 1 :b 2}))
-  # =>
-  @[[:a 1] [:b 2]]
-
-  (to-entries {})
-  # =>
-  @[]
-
-  (to-entries @{:a 1})
-  # =>
-  @[[:a 1]]
-
-  # XXX: leaving non-dictionaries alone and passing through...
-  #      is this desirable over erroring?
-  (to-entries [:a :b :c])
-  # =>
-  [:a :b :c]
-
-  )
-
-# XXX: when xs is empty, "all" becomes nil
-(defn first-rest-maybe-all
-  [xs]
-  (if (or (nil? xs) (empty? xs))
-    [nil nil nil]
-    [(first xs) (rest xs) xs]))
-
-(comment
-
-  (first-rest-maybe-all [:a :b])
-  # =>
-  [:a [:b] [:a :b]]
-
-  (first-rest-maybe-all @[:a])
-  # =>
-  [:a @[] @[:a]]
-
-  (first-rest-maybe-all [])
-  # =>
-  [nil nil nil]
-
-  # XXX: is this what we want?
-  (first-rest-maybe-all nil)
-  # =>
-  [nil nil nil]
-
-  )
+# exports
+(def par l/par)
+(def gen l/gen)
 
 ########################################################################
 
@@ -706,16 +712,15 @@
 
   )
 
-# ds - data structure
-(defn ds-zip
+(defn indexed-zip
   ``
-  Returns a zipper for nested data structures (tuple/array/table/struct),
-  given a root data structure.
+  Returns a zipper for nested indexed data structures (tuples
+  or arrays), given a root data structure.
   ``
-  [ds]
-  (zipper ds
-          |(or (dictionary? $) (indexed? $))
-          to-entries
+  [indexed]
+  (zipper indexed
+          indexed?
+          h/to-entries
           (fn [p xs] xs)))
 
 (comment
@@ -724,7 +729,7 @@
     [:x [:y :z]])
 
   (def [the-node the-state]
-    (ds-zip a-node))
+    (indexed-zip a-node))
 
   the-node
   # =>
@@ -744,7 +749,7 @@
 
 (comment
 
-  (node (ds-zip [:a :b [:x :y]]))
+  (node (indexed-zip [:a :b [:x :y]]))
   # =>
   [:a :b [:x :y]]
 
@@ -759,7 +764,7 @@
 
   # merge is used to "remove" the prototype table of `st`
   (merge {}
-         (-> (ds-zip [:a [:b [:x :y]]])
+         (-> (indexed-zip [:a [:b [:x :y]]])
              state))
   # =>
   @{}
@@ -776,7 +781,7 @@
 
 (comment
 
-  (branch? (ds-zip [:a :b [:x :y]]))
+  (branch? (indexed-zip [:a :b [:x :y]]))
   # =>
   true
 
@@ -794,7 +799,7 @@
 
 (comment
 
-  (children (ds-zip [:a :b [:x :y]]))
+  (children (indexed-zip [:a :b [:x :y]]))
   # =>
   [:a :b [:x :y]]
 
@@ -811,7 +816,7 @@
 
   # merge is used to "remove" the prototype table of `st`
   (merge {}
-         (make-state (ds-zip [:a :b [:x :y]])))
+         (make-state (indexed-zip [:a :b [:x :y]])))
   # =>
   @{}
 
@@ -826,32 +831,32 @@
   (when (branch? zloc)
     (let [[z-node st] zloc
           [k rest-kids kids]
-          (first-rest-maybe-all (children zloc))]
+          (h/first-rest-maybe-all (children zloc))]
       (when kids
         [k
          (make-state zloc
                      []
                      rest-kids
                      (if (not (empty? st))
-                       (tuple-push (get st :pnodes) z-node)
+                       (h/tuple-push (get st :pnodes) z-node)
                        [z-node])
                      st
                      (get st :changed?))]))))
 
 (comment
 
-  (node (down (ds-zip [:a :b [:x :y]])))
+  (node (down (indexed-zip [:a :b [:x :y]])))
   # =>
   :a
 
-  (-> (ds-zip [:a :b [:x :y]])
+  (-> (indexed-zip [:a :b [:x :y]])
       down
       branch?)
   # =>
   false
 
   (try
-    (-> (ds-zip [:a])
+    (-> (indexed-zip [:a])
         down
         children)
     ([e] e))
@@ -862,7 +867,7 @@
     #
     (merge {}
            (-> [:a [:b [:x :y]]]
-               ds-zip
+               indexed-zip
                down
                state))
     #
@@ -883,11 +888,11 @@
   [zloc]
   (let [[z-node st] zloc
         {:ls ls :rs rs} st
-        [r rest-rs rs] (first-rest-maybe-all rs)]
-    (when (and (not (empty? st)) rs)
+        [r rest-rs rs_] (h/first-rest-maybe-all rs)]
+    (when (and (not (empty? st)) rs_)
       [r
        (make-state zloc
-                   (tuple-push ls z-node)
+                   (h/tuple-push ls z-node)
                    rest-rs
                    (get st :pnodes)
                    (get st :pstate)
@@ -895,14 +900,14 @@
 
 (comment
 
-  (-> (ds-zip [:a :b])
+  (-> (indexed-zip [:a :b])
       down
       right
       node)
   # =>
   :b
 
-  (-> (ds-zip [:a])
+  (-> (indexed-zip [:a])
       down
       right)
   # =>
@@ -919,7 +924,7 @@
 
 (comment
 
-  (make-node (ds-zip [:a :b [:x :y]])
+  (make-node (indexed-zip [:a :b [:x :y]])
              [:a :b] [:x :y])
   # =>
   [:x :y]
@@ -953,7 +958,7 @@
 (comment
 
   (def m-zip
-    (ds-zip [:a :b [:x :y]]))
+    (indexed-zip [:a :b [:x :y]]))
 
   (deep=
     (-> m-zip
@@ -998,7 +1003,7 @@
 (comment
 
   (def a-zip
-    (ds-zip [:a :b [:x :y]]))
+    (indexed-zip [:a :b [:x :y]]))
 
   (node a-zip)
   # =>
@@ -1035,7 +1040,7 @@
 (comment
 
   (def a-zip
-    (ds-zip [:a :b [:x]]))
+    (indexed-zip [:a :b [:x]]))
 
   (node (df-next a-zip))
   # =>
@@ -1074,14 +1079,14 @@
 
 (comment
 
-  (-> (ds-zip [:a :b [:x :y]])
+  (-> (indexed-zip [:a :b [:x :y]])
       down
       (replace :w)
       root)
   # =>
   [:w :b [:x :y]]
 
-  (-> (ds-zip [:a :b [:x :y]])
+  (-> (indexed-zip [:a :b [:x :y]])
       down
       right
       right
@@ -1104,14 +1109,14 @@
 
 (comment
 
-  (-> (ds-zip [1 2 [8 9]])
+  (-> (indexed-zip [1 2 [8 9]])
       down
       (edit inc)
       root)
   # =>
   [2 2 [8 9]]
 
-  (-> (ds-zip [1 2 [8 9]])
+  (-> (indexed-zip [1 2 [8 9]])
       down
       (edit inc)
       right
@@ -1140,7 +1145,7 @@
 
 (comment
 
-  (-> (ds-zip [:a :b [:x :y]])
+  (-> (indexed-zip [:a :b [:x :y]])
       (insert-child :c)
       root)
   # =>
@@ -1161,7 +1166,7 @@
 
 (comment
 
-  (-> (ds-zip [:a :b [:x :y]])
+  (-> (indexed-zip [:a :b [:x :y]])
       (append-child :c)
       root)
   # =>
@@ -1183,7 +1188,7 @@
              (not (empty? rs)))
       [(last rs)
        (make-state zloc
-                   (tuple-push ls z-node ;(butlast rs))
+                   (h/tuple-push ls z-node ;(h/butlast rs))
                    []
                    (get st :pnodes)
                    (get st :pstate)
@@ -1192,7 +1197,7 @@
 
 (comment
 
-  (-> (ds-zip [:a :b [:x :y]])
+  (-> (indexed-zip [:a :b [:x :y]])
       down
       rightmost
       node)
@@ -1204,8 +1209,8 @@
 (defn remove
   ``
   Removes the node at `zloc`, returning the z-location that would have
-  preceded it in a depth-first walk.
-  Throws an error if called at the root z-location.
+  preceded it in a depth-first walk.  Throws an error if called at the
+  root z-location.
   ``
   [zloc]
   (let [[z-node st] zloc
@@ -1224,7 +1229,7 @@
       (if (pos? (length ls))
         (recur [(last ls)
                 (make-state zloc
-                            (butlast ls)
+                            (h/butlast ls)
                             rs
                             pnodes
                             pstate
@@ -1240,7 +1245,7 @@
 
 (comment
 
-  (-> (ds-zip [:a :b [:x :y]])
+  (-> (indexed-zip [:a :b [:x :y]])
       down
       right
       remove
@@ -1249,7 +1254,7 @@
   :a
 
   (try
-    (remove (ds-zip [:a :b [:x :y]]))
+    (remove (indexed-zip [:a :b [:x :y]]))
     ([e] e))
   # =>
   "Called `remove` at root"
@@ -1269,7 +1274,7 @@
                (not (empty? ls)))
       [(last ls)
        (make-state zloc
-                   (butlast ls)
+                   (h/butlast ls)
                    [z-node ;rs]
                    (get st :pnodes)
                    (get st :pstate)
@@ -1277,7 +1282,7 @@
 
 (comment
 
-  (-> (ds-zip [:a :b :c])
+  (-> (indexed-zip [:a :b :c])
       down
       right
       right
@@ -1286,7 +1291,7 @@
   # =>
   :b
 
-  (-> (ds-zip [:a])
+  (-> (indexed-zip [:a])
       down
       left)
   # =>
@@ -1314,7 +1319,7 @@
 
 (comment
 
-  (-> (ds-zip [:a :b [:x :y]])
+  (-> (indexed-zip [:a :b [:x :y]])
       down
       right
       df-prev
@@ -1322,7 +1327,7 @@
   # =>
   :a
 
-  (-> (ds-zip [:a :b [:x :y]])
+  (-> (indexed-zip [:a :b [:x :y]])
       down
       right
       right
@@ -1355,7 +1360,7 @@
 (comment
 
   (def a-zip
-    (ds-zip [:a :b [:x :y]]))
+    (indexed-zip [:a :b [:x :y]]))
 
   (-> a-zip
       down
@@ -1383,7 +1388,7 @@
     (if (not (empty? st))
       [z-node
        (make-state zloc
-                   (tuple-push ls a-node)
+                   (h/tuple-push ls a-node)
                    rs
                    (get st :pnodes)
                    (get st :pstate)
@@ -1393,7 +1398,7 @@
 (comment
 
   (def a-zip
-    (ds-zip [:a :b [:x :y]]))
+    (indexed-zip [:a :b [:x :y]]))
 
   (-> a-zip
       down
@@ -1418,11 +1423,18 @@
 
 (comment
 
-  (-> (ds-zip [:a :b [:x :y]])
+  (-> (indexed-zip [:a :b [:x :y]])
       down
       rights)
   # =>
   [:b [:x :y]]
+
+  (-> (indexed-zip [:a :b])
+      down
+      right
+      rights)
+  # =>
+  []
 
   )
 
@@ -1436,13 +1448,13 @@
 
 (comment
 
-  (-> (ds-zip [:a :b])
+  (-> (indexed-zip [:a :b])
       down
       lefts)
   # =>
   []
 
-  (-> (ds-zip [:a :b [:x :y]])
+  (-> (indexed-zip [:a :b [:x :y]])
       down
       right
       right
@@ -1466,7 +1478,7 @@
       [(first ls)
        (make-state zloc
                    []
-                   [;(rest ls) z-node ;rs]
+                   [;(h/rest ls) z-node ;rs]
                    (get st :pnodes)
                    (get st :pstate)
                    (get st :changed?))]
@@ -1474,14 +1486,14 @@
 
 (comment
 
-  (-> (ds-zip [:a :b [:x :y]])
+  (-> (indexed-zip [:a :b [:x :y]])
       down
       leftmost
       node)
   # =>
   :a
 
-  (-> (ds-zip [:a :b [:x :y]])
+  (-> (indexed-zip [:a :b [:x :y]])
       down
       rightmost
       leftmost
@@ -1499,17 +1511,17 @@
 
 (comment
 
-  (path (ds-zip [:a :b [:x :y]]))
+  (path (indexed-zip [:a :b [:x :y]]))
   # =>
   nil
 
-  (-> (ds-zip [:a :b [:x :y]])
+  (-> (indexed-zip [:a :b [:x :y]])
       down
       path)
   # =>
   [[:a :b [:x :y]]]
 
-  (-> (ds-zip [:a :b [:x :y]])
+  (-> (indexed-zip [:a :b [:x :y]])
       down
       right
       right
@@ -1541,7 +1553,7 @@
         [:symbol "+"] [:whitespace " "]
         [:number "1"] [:whitespace " "]
         [:number "2"]]]
-      ds-zip
+      indexed-zip
       down
       right
       down
@@ -1580,7 +1592,7 @@
         [:symbol "+"] [:whitespace " "]
         [:number "1"] [:whitespace " "]
         [:number "2"]]]
-      ds-zip
+      indexed-zip
       down
       right
       down
@@ -1616,7 +1628,7 @@
 
 (comment
 
-  (-> (ds-zip [:a :b :c])
+  (-> (indexed-zip [:a :b :c])
       down
       (search-from |(match (node $)
                       :b
@@ -1625,7 +1637,7 @@
   # =>
   :b
 
-  (-> (ds-zip [:a :b :c])
+  (-> (indexed-zip [:a :b :c])
       down
       (search-from |(match (node $)
                       :d
@@ -1633,7 +1645,7 @@
   # =>
   nil
 
-  (-> (ds-zip [:a :b :c])
+  (-> (indexed-zip [:a :b :c])
       down
       (search-from |(match (node $)
                       :a
@@ -1661,7 +1673,7 @@
 
 (comment
 
-  (-> (ds-zip [:b :a :b])
+  (-> (indexed-zip [:b :a :b])
       down
       (search-after |(match (node $)
                        :b
@@ -1671,7 +1683,7 @@
   # =>
   :a
 
-  (-> (ds-zip [:b :a :b])
+  (-> (indexed-zip [:b :a :b])
       down
       (search-after |(match (node $)
                        :d
@@ -1679,7 +1691,7 @@
   # =>
   nil
 
-  (-> (ds-zip [:a [:b :c [2 [3 :smile] 5]]])
+  (-> (indexed-zip [:a [:b :c [2 [3 :smile] 5]]])
       (search-after |(match (node $)
                        [_ :smile]
                        true))
@@ -1720,7 +1732,7 @@
 
 (comment
 
-  (-> (ds-zip [:a :b [:x :y]])
+  (-> (indexed-zip [:a :b [:x :y]])
       down
       right
       right
@@ -1729,21 +1741,21 @@
   # =>
   [:a :b :x :y]
 
-  (-> (ds-zip [:a :b [:x :y]])
+  (-> (indexed-zip [:a :b [:x :y]])
       down
       unwrap
       root)
   # =>
   [:a :b [:x :y]]
 
-  (-> (ds-zip [[:a]])
+  (-> (indexed-zip [[:a]])
       down
       unwrap
       root)
   # =>
   [:a]
 
-  (-> (ds-zip [[:a :b] [:x :y]])
+  (-> (indexed-zip [[:a :b] [:x :y]])
       down
       down
       remove
@@ -1753,11 +1765,35 @@
   [:b [:x :y]]
 
   (try
-    (-> (ds-zip [:a :b [:x :y]])
+    (-> (indexed-zip [:a :b [:x :y]])
         unwrap)
     ([e] e))
   # =>
   "Called `unwrap` at root"
+
+  )
+
+(defn eq?
+  ``
+  Compare two zlocs, `a-zloc` and `b-zloc`, for equality.
+  ``
+  [a-zloc b-zloc]
+  (and (= (length (lefts a-zloc)) (length (lefts b-zloc)))
+       (= (path a-zloc) (path b-zloc))))
+
+(comment
+
+  (def iz (indexed-zip [:a :b :c :b]))
+
+  (eq? (-> iz down right)
+       (-> iz down right right right))
+  # =>
+  false
+
+  (eq? (-> iz down right)
+       (-> iz down right right right left left))
+  # =>
+  true
 
   )
 
@@ -1781,9 +1817,7 @@
   (def kids @[])
   (var cur-zloc start-zloc)
   (while (and cur-zloc
-              # XXX: expensive?
-              (not (deep= (node cur-zloc)
-                          (node end-zloc)))) # left to right
+              (not (eq? cur-zloc end-zloc))) # left to right
     (array/push kids (node cur-zloc))
     (set cur-zloc (right cur-zloc)))
   (when (nil? cur-zloc)
@@ -1820,7 +1854,7 @@
 (comment
 
   (def start-zloc
-    (-> (ds-zip [:a [:b] :c :x])
+    (-> (indexed-zip [:a [:b] :c :x])
         down
         right))
 
@@ -1984,11 +2018,11 @@
   # =>
   @[:code @{:bc 1 :bl 1 :ec 8 :el 1}
     [:tuple @{:bc 1 :bl 1 :ec 8 :el 1}
-            [:symbol @{:bc 2 :bl 1 :ec 3 :el 1} "/"]
-            [:whitespace @{:bc 3 :bl 1 :ec 4 :el 1} " "]
-            [:number @{:bc 4 :bl 1 :ec 5 :el 1} "1"]
-            [:whitespace @{:bc 5 :bl 1 :ec 6 :el 1} " "]
-            [:number @{:bc 6 :bl 1 :ec 7 :el 1} "8"]]]
+     [:symbol @{:bc 2 :bl 1 :ec 3 :el 1} "/"]
+     [:whitespace @{:bc 3 :bl 1 :ec 4 :el 1} " "]
+     [:number @{:bc 4 :bl 1 :ec 5 :el 1} "1"]
+     [:whitespace @{:bc 5 :bl 1 :ec 6 :el 1} " "]
+     [:number @{:bc 6 :bl 1 :ec 7 :el 1} "8"]]]
 
   )
 

@@ -13,22 +13,22 @@
     (with-syms [$ts $tr
                 $es $er]
       ~(do
-         (def [,$ts ,$tr] (protect (eval ',t-form)))
-         (def [,$es ,$er] (protect (eval ',e-form)))
-         (array/push _verify/test-results
-                     @{:test-form ',t-form
-                       :test-status ,$ts
-                       :test-value ,$tr
-                       #
-                       :expected-form ',e-form
-                       :expected-status ,$es
-                       :expected-value ,$er
-                       #
-                       :line-no ,line-no
-                       :name ,name
-                       :passed (if (and ,$ts ,$es)
-                                 (deep= ,$tr ,$er)
-                                 nil)})
+         (def [,$ts ,$tr] (as-macro ,protect (,eval ',t-form)))
+         (def [,$es ,$er] (as-macro ,protect (,eval ',e-form)))
+         (,array/push _verify/test-results
+                      @{:test-form ',t-form
+                        :test-status ,$ts
+                        :test-value ,$tr
+                        #
+                        :expected-form ',e-form
+                        :expected-status ,$es
+                        :expected-value ,$er
+                        #
+                        :line-no ,line-no
+                        :name ,name
+                        :passed (if (as-macro ,and ,$ts ,$es)
+                                  (,deep= ,$tr ,$er)
+                                  nil)})
          ,name)))
 
   (defn _verify/start-tests
