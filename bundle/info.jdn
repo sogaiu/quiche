@@ -1,6 +1,6 @@
-{:name "fudge"
- :url "https://github.com/sogaiu/fudge"
- :repo "git+https://github.com/sogaiu/fudge.git"
+{:name "quiche"
+ :url "https://github.com/sogaiu/quiche"
+ :repo "git+https://github.com/sogaiu/quiche.git"
 
  :vendored
  [{:name "some-bundle-bits"
@@ -27,7 +27,11 @@
            ["src/rewrite.janet" "src/"]
            ["src/settings.janet" "src/"]
            ["src/tests.janet" "src/"]
-           ["src/verify.janet" "src/"]]}]
+           ["src/verify.janet" "src/"]]}
+  {:name "spork"
+   :url "https://github.com/janet-lang/spork"
+   :tag "60110c3688c5687cc603159bcfa38d579f95a27d"
+   :paths [["spork/sh-dsl.janet" "bin/"]]}]
 
  :binscripts
  # has `.janet` extension so that importing is possible, e.g. via:
