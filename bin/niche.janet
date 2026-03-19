@@ -2872,8 +2872,8 @@
                                                     "=>"
                                                     (capture (thru -1)))
                                          content)
-                              no-hash-left (nil? (string/find "#" l))
-                              no-hash-right (nil? (string/find "#" r))]
+                              _no-hash-left (nil? (string/find "#" l))
+                              _no-hash-right (nil? (string/find "#" r))]
                        (do
                          (set label-left (string/trim l))
                          (set label-right (string/trim r))
@@ -3649,7 +3649,7 @@
   (var found-test nil)
   # process comment block content
   (while (not (j/end? curr-zloc))
-    (def [ti-zloc label-left label-right] (r/find-test-indicator curr-zloc))
+    (def [ti-zloc _label-left _label-right] (r/find-test-indicator curr-zloc))
     (when (not ti-zloc)
       (break))
     #
@@ -3659,7 +3659,7 @@
                  (nil? expected-expr-zloc))
            (j/right curr-zloc) # next
            # found a complete test, work on rewriting
-           (let [eol-str (if (= :windows (os/which)) "\r\n" "\n")]
+           (do
              (set found-test true)
              (-> (j/wrap expected-expr-zloc [:tuple @{}])
                  (j/insert-child [:whitespace @{} " "])
@@ -4611,7 +4611,7 @@
 (comment import ./output :prefix "")
 
 
-(def version "2026-03-19_05-08-49")
+(def version "2026-03-19_08-18-06")
 
 (defn main
   [& args]
