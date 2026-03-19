@@ -33,7 +33,8 @@
                   @[(get fails 0)]
                   fails)
           :let [{:line-no line-no :test-value test-value} f
-                tv-str (string/format "%j" test-value)]]
+                tv-str (string/format (if (tuple? test-value) "'%j" "%j")
+                                      test-value)]]
       [line-no tv-str]))
   (def ret (r/patch input update-info))
   (when (not ret)

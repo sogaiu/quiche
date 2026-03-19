@@ -60,7 +60,8 @@
                   :line-no 8
                   :name ""
                   :passed false
-                  :test-form (map inc [0 1 2])
+                  :rest [34 51 2]
+                  :test-form [map inc [0 1 2]]
                   :test-status true
                   :test-value @[1 2 3]}
                 @{:expected-form "hello"
@@ -69,6 +70,7 @@
                   :line-no 12
                   :name ""
                   :passed false
+                  :rest [73 88 2]
                   :test-form (print "hello")
                   :test-status true}]
        :num-tests 3}]]
@@ -92,6 +94,7 @@
                    :line-no 12
                    :name ""
                    :passed false
+                   :rest [73 88 2]
                    :test-form (print "hello")
                    :test-status true}]
         :num-tests 3}]]

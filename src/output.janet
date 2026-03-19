@@ -44,14 +44,20 @@
   (l/note :o (separator str n)))
 
 (defn prin-form
+  [form-str &opt color]
+  (def msg (string/trimr form-str))
+  (def m-buf
+    (buffer (if color (color-msg msg color) msg)))
+  (l/note :o m-buf))
+
+(defn prin-data
   [form &opt color]
   (def buf @"")
   (with-dyns [:out buf]
     (printf "%m" form))
   (def msg (string/trimr buf))
   (def m-buf
-    (buffer ":\n"
-            (if color (color-msg msg color) msg)))
+    (buffer (if color (color-msg msg color) msg)))
   (l/note :o m-buf))
 
 (defn color-form
@@ -92,13 +98,14 @@
           (color-msg denom :green)))
 
 (defn report-fails
-  [{:num-tests total-tests :fails fails}]
+  [src {:num-tests total-tests :fails fails}]
   (var i 0)
   (each f fails
-    (def {:test-value test-value
+    (def {:test-form test-form
+          :test-value test-value
           :expected-value expected-value
           :line-no line-no
-          :test-form test-form} f)
+          :rest rest} f)
     (++ i)
     #
     (l/noten :o)
@@ -114,18 +121,22 @@
     (l/noten :o)
     #
     (l/noten :o)
-    (prin-color "form" :yellow)
-    (prin-form test-form)
+    (prin-color "form:" :yellow)
+    (l/noten :o)
+    (prin-form (string (string/repeat " " (get rest 2))
+                       (string/slice src (get rest 0) (get rest 1))))
     (l/noten :o)
     #
     (l/noten :o)
-    (prin-color "expected" :yellow)
-    (prin-form expected-value)
+    (prin-color "expected:" :yellow)
+    (l/noten :o)
+    (prin-data expected-value)
     (l/noten :o)
     #
     (l/noten :o)
-    (prin-color "actual" :yellow)
-    (prin-form test-value :blue)
+    (prin-color "actual:" :yellow)
+    (l/noten :o)
+    (prin-data test-value :blue)
     (l/noten :o)))
 
 (defn report-std
@@ -138,12 +149,14 @@
     (l/noten :o content)))
 
 (defn report
-  [test-results out err]
+  [input test-results out err]
   (when (not (empty? (get test-results :fails)))
     (l/noten :o)
     (prin-sep)
     #
-    (report-fails test-results)
+    (def src (slurp input))
+    #
+    (report-fails src test-results)
     #
     (when (and out (pos? (length out)))
       (l/noten :o)

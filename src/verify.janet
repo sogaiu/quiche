@@ -9,7 +9,7 @@
   (var _verify/test-results @[])
 
   (defmacro _verify/is
-    [t-form e-form line-no name]
+    [t-form e-form line-no name & rest]
     (with-syms [$ts $tr
                 $es $er]
       ~(do
@@ -26,6 +26,7 @@
                         #
                         :line-no ,line-no
                         :name ,name
+                        :rest ',rest
                         :passed (if (as-macro ,and ,$ts ,$es)
                                   (,deep= ,$tr ,$er)
                                   nil)})

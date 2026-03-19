@@ -165,25 +165,25 @@
 
   (j/node ti-zloc)
   # =>
-  [:comment @{:bc 3 :bl 6 :ec 7 :el 6} "# =>"]
+  [:comment @{:bc 3 :bl 6 :bp 42 :ec 7 :el 6 :ep 46} "# =>"]
 
   (def test-expr-zloc (find-test-expr ti-zloc))
 
   (j/node test-expr-zloc)
   # =>
-  [:tuple @{:bc 3 :bl 5 :ec 17 :el 5}
-   [:symbol @{:bc 4 :bl 5 :ec 7 :el 5} "put"]
-   [:whitespace @{:bc 7 :bl 5 :ec 8 :el 5} " "]
-   [:table @{:bc 8 :bl 5 :ec 11 :el 5}]
-   [:whitespace @{:bc 11 :bl 5 :ec 12 :el 5} " "]
-   [:keyword @{:bc 12 :bl 5 :ec 14 :el 5} ":a"]
-   [:whitespace @{:bc 14 :bl 5 :ec 15 :el 5} " "]
-   [:number @{:bc 15 :bl 5 :ec 16 :el 5} "2"]]
+  [:tuple @{:bc 3 :bl 5 :bp 25 :ec 17 :el 5 :ep 39}
+   [:symbol @{:bc 4 :bl 5 :bp 26 :ec 7 :el 5 :ep 29} "put"]
+   [:whitespace @{:bc 7 :bl 5 :bp 29 :ec 8 :el 5 :ep 30} " "]
+   [:table @{:bc 8 :bl 5 :bp 30 :ec 11 :el 5 :ep 33}]
+   [:whitespace @{:bc 11 :bl 5 :bp 33 :ec 12 :el 5 :ep 34} " "]
+   [:keyword @{:bc 12 :bl 5 :bp 34 :ec 14 :el 5 :ep 36} ":a"]
+   [:whitespace @{:bc 14 :bl 5 :bp 36 :ec 15 :el 5 :ep 37} " "]
+   [:number @{:bc 15 :bl 5 :bp 37 :ec 16 :el 5 :ep 38} "2"]]
 
   (-> (j/left test-expr-zloc)
       j/node)
   # =>
-  [:whitespace @{:bc 1 :bl 5 :ec 3 :el 5} "  "]
+  [:whitespace @{:bc 1 :bl 5 :bp 23 :ec 3 :el 5 :ep 25} "  "]
 
   )
 
@@ -276,26 +276,26 @@
 
   (j/node ti-zloc)
   # =>
-  [:comment @{:bc 3 :bl 6 :ec 7 :el 6} "# =>"]
+  [:comment @{:bc 3 :bl 6 :bp 42 :ec 7 :el 6 :ep 46} "# =>"]
 
   (def expected-expr-zloc (find-expected-expr ti-zloc))
 
   (j/node expected-expr-zloc)
   # =>
-  [:table @{:bc 3 :bl 7 :ec 10 :el 8}
-   [:keyword @{:bc 5 :bl 7 :ec 7 :el 7} ":a"]
-   [:whitespace @{:bc 7 :bl 7 :ec 8 :el 7} " "]
-   [:number @{:bc 8 :bl 7 :ec 9 :el 7} "1"]
-   [:whitespace @{:bc 9 :bl 7 :ec 1 :el 8} "\n"]
-   [:whitespace @{:bc 1 :bl 8 :ec 5 :el 8} "    "]
-   [:keyword @{:bc 5 :bl 8 :ec 7 :el 8} ":b"]
-   [:whitespace @{:bc 7 :bl 8 :ec 8 :el 8} " "]
-   [:number @{:bc 8 :bl 8 :ec 9 :el 8} "2"]]
+  [:table @{:bc 3 :bl 7 :bp 49 :ec 10 :el 8 :ep 65}
+   [:keyword @{:bc 5 :bl 7 :bp 51 :ec 7 :el 7 :ep 53} ":a"]
+   [:whitespace @{:bc 7 :bl 7 :bp 53 :ec 8 :el 7 :ep 54} " "]
+   [:number @{:bc 8 :bl 7 :bp 54 :ec 9 :el 7 :ep 55} "1"]
+   [:whitespace @{:bc 9 :bl 7 :bp 55 :ec 1 :el 8 :ep 56} "\n"]
+   [:whitespace @{:bc 1 :bl 8 :bp 56 :ec 5 :el 8 :ep 60} "    "]
+   [:keyword @{:bc 5 :bl 8 :bp 60 :ec 7 :el 8 :ep 62} ":b"]
+   [:whitespace @{:bc 7 :bl 8 :bp 62 :ec 8 :el 8 :ep 63} " "]
+   [:number @{:bc 8 :bl 8 :bp 63 :ec 9 :el 8 :ep 64} "2"]]
 
   (-> (j/left expected-expr-zloc)
       j/node)
   # =>
-  [:whitespace @{:bc 1 :bl 7 :ec 3 :el 7} "  "]
+  [:whitespace @{:bc 1 :bl 7 :bp 47 :ec 3 :el 7 :ep 49} "  "]
 
   (def src
     (string "(comment"                eol
@@ -315,7 +315,7 @@
 
   (j/node ti-zloc)
   # =>
-  [:comment @{:bc 3 :bl 4 :ec 16 :el 4} "# => @[:a :b]"]
+  [:comment @{:bc 3 :bl 4 :bp 36 :ec 16 :el 4 :ep 49} "# => @[:a :b]"]
 
   (find-expected-expr ti-zloc)
   # =>
@@ -409,7 +409,7 @@
   )
 
 (defn wrap-as-test-call
-  [start-zloc end-zloc ti-line-no test-label]
+  [start-zloc end-zloc ti-line-no test-label {:bp bp :ep ep :bc bc}]
   # XXX: hack - not sure if robust enough
   (def eol-str (if (= :windows (os/which)) "\r\n" "\n"))
   (-> (j/wrap start-zloc [:tuple @{}] end-zloc)
@@ -425,7 +425,16 @@
       (j/append-child [:number @{} (string ti-line-no)])
       #
       (j/append-child [:whitespace @{} " "])
-      (j/append-child [:string @{} test-label])))
+      (j/append-child [:string @{} test-label])
+      # start position of test expression
+      (j/append-child [:whitespace @{} " "])
+      (j/append-child [:number @{} (string bp)])
+      # end position of test expression
+      (j/append-child [:whitespace @{} " "])
+      (j/append-child [:number @{} (string ep)])
+      # start column of test expression; adjust to 0-based
+      (j/append-child [:whitespace @{} " "])
+      (j/append-child [:number @{} (string (dec bc))])))
 
 (comment
 
@@ -448,7 +457,8 @@
                      left-of-t-zloc
                      #
                      t-zloc)
-        w-zloc (wrap-as-test-call start-zloc e-zloc "3" `""`)]
+        w-zloc (wrap-as-test-call start-zloc e-zloc 3 `""`
+                                  (get (j/node t-zloc) 1))]
     (j/gen (j/node w-zloc)))
   # =>
   (string "(_verify/is\n"
@@ -456,7 +466,10 @@
           "# =>\n"
           "2 "
           "3 "
-          `""`
+          `"" `
+          "0 "
+          "7 "
+          "0"
           ")")
 
   )
@@ -492,7 +505,8 @@
                                 (make-label label-left label-right))]
              (set found-test true)
              (wrap-as-test-call start-zloc end-zloc
-                                ti-line-no test-label)))))
+                                ti-line-no test-label
+                                (get (j/node test-expr-zloc) 1))))))
   # navigate back out to top of block
   (when found-test
     # morph comment block into plain tuple -- to be unwrapped later
@@ -531,19 +545,19 @@
       j/root
       j/gen)
   # =>
-  (string "( "                     eol
+  (string "( "                             eol
           eol
-          "  (def a 1)"            eol
+          "  (def a 1)"                    eol
           eol
-          "  (_verify/is"          eol
-          "  (put @{} :a 2)"       eol
-          "  # left =>"            eol
-          `  @{:a 2} 6 "left =>")` eol
+          "  (_verify/is"                  eol
+          "  (put @{} :a 2)"               eol
+          "  # left =>"                    eol
+          `  @{:a 2} 6 "left =>" 25 39 2)` eol
           eol
-          "  (_verify/is"          eol
-          "  (+ 1 1)"              eol
-          "  # => right"           eol
-          `  2 10 "=> right")`     eol
+          "  (_verify/is"                  eol
+          "  (+ 1 1)"                      eol
+          "  # => right"                   eol
+          `  2 10 "=> right" 65 72 2)`     eol
           eol
           "  :smile)")
 
@@ -578,19 +592,19 @@
 
   (rewrite-comment-block src)
   # =>
-  (string "( "                      eol
+  (string "( "                              eol
           eol
-          "  (def a 1)"             eol
+          "  (def a 1)"                     eol
           eol
-          "  (_verify/is"           eol
-          "  (put @{} :a 2)"        eol
-          "  # =>"                  eol
-          `  @{:a 2} 6 "")`         eol
+          "  (_verify/is"                   eol
+          "  (put @{} :a 2)"                eol
+          "  # =>"                          eol
+          `  @{:a 2} 6 "" 25 39 2)`         eol
           eol
-          "  (_verify/is"           eol
-          "  (+ 1 1)"               eol
-          "  # left => right"       eol
-          `  2 10 "left => right")` eol
+          "  (_verify/is"                   eol
+          "  (+ 1 1)"                       eol
+          "  # left => right"               eol
+          `  2 10 "left => right" 60 67 2)` eol
           eol
           "  :smile)")
 
@@ -685,49 +699,49 @@
   (rewrite src)
   # =>
   (string eol
-          `(require "json")`     eol
+          `(require "json")`               eol
           eol
-          "(defn my-fn"          eol
-          "  [x]"                eol
-          "  (+ x 1))"           eol
+          "(defn my-fn"                    eol
+          "  [x]"                          eol
+          "  (+ x 1))"                     eol
           eol
-          " "                    eol
+          " "                              eol
           eol
-          "  (def a 1)"          eol
+          "  (def a 1)"                    eol
           eol
-          "  (_verify/is"        eol
-          "  (put @{} :a 2)"     eol
-          "  # =>"               eol
-          `  @{:a 2} 12 "")`     eol
+          "  (_verify/is"                  eol
+          "  (put @{} :a 2)"               eol
+          "  # =>"                         eol
+          `  @{:a 2} 12 "" 73 87 2)`       eol
           eol
-          "  (_verify/is"        eol
-          "  (my-fn 1)"          eol
-          "  # =>"               eol
-          `  2 16 "")`           eol
+          "  (_verify/is"                  eol
+          "  (my-fn 1)"                    eol
+          "  # =>"                         eol
+          `  2 16 "" 108 117 2)`           eol
           eol
-          "  :smile"             eol
+          "  :smile"                       eol
           eol
-          "(defn your-fn"        eol
-          "  [y]"                eol
-          "  (* y y))"           eol
+          "(defn your-fn"                  eol
+          "  [y]"                          eol
+          "  (* y y))"                     eol
           eol
-          " "                    eol
+          " "                              eol
           eol
-          "  (_verify/is"        eol
-          "  (your-fn 3)"        eol
-          "  # =>"               eol
-          `  9 28 "")`           eol
+          "  (_verify/is"                  eol
+          "  (your-fn 3)"                  eol
+          "  # =>"                         eol
+          `  9 28 "" 179 190 2)`           eol
           eol
-          "  (def b 1)"          eol
+          "  (def b 1)"                    eol
           eol
-          "  (_verify/is"        eol
-          "  (+ b 1)"            eol
-          "  # =>"               eol
-          `  2 34 "")`           eol
+          "  (_verify/is"                  eol
+          "  (+ b 1)"                      eol
+          "  # =>"                         eol
+          `  2 34 "" 218 225 2)`           eol
           eol
-          "  (def c 2)"          eol
+          "  (def c 2)"                    eol
           eol
-          "  :smile"             eol)
+          "  :smile"                       eol)
 
   )
 
@@ -759,24 +773,24 @@
   (rewrite src)
   # =>
   (string eol
-          " "               eol
+          " "                        eol
           eol
-          "  (_verify/is"   eol
-          "  (-> ``"        eol
-          "      123456789" eol
-          "      ``"        eol
-          "      length)"   eol
-          "  # =>"          eol
-          `  9 7 "")`       eol
+          "  (_verify/is"            eol
+          "  (-> ``"                 eol
+          "      123456789"          eol
+          "      ``"                 eol
+          "      length)"            eol
+          "  # =>"                   eol
+          `  9 7 "" 12 57 2)`        eol
           eol
-          "  (_verify/is"   eol
-          "  (->"           eol
-          "    ``"          eol
-          "    123456789"   eol
-          "    ``"          eol
-          "    length)"     eol
-          "  # =>"          eol
-          `  9 15 "")`      eol
+          "  (_verify/is"            eol
+          "  (->"                    eol
+          "    ``"                   eol
+          "    123456789"            eol
+          "    ``"                   eol
+          "    length)"              eol
+          "  # =>"                   eol
+          `  9 15 "" 72 115 2)`      eol
           eol
           "  :smile")
 

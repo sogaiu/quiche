@@ -4,5 +4,9 @@
   # =>
   @[:b]
 
+  (tuple :smile)
+  # =>
+  [:breathe]
+
   )
 

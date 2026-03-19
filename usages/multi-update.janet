@@ -54,16 +54,27 @@
     (parse buf))
   # =>
   ~@[[,(get dst-paths 0)
-       @{:fails @[@{:expected-form @[:b]
-                    :expected-status true
-                    :expected-value @[:b]
-                    :line-no 4
-                    :name ""
-                    :passed false
-                    :test-form (array/concat @[] :a)
-                    :test-status true
-                    :test-value @[:a]}]
-         :num-tests 1}]
+      @{:fails @[@{:expected-form @[:b]
+                   :expected-status true
+                   :expected-value @[:b]
+                   :line-no 4
+                   :name ""
+                   :passed false
+                   :rest [12 33 2]
+                   :test-form (array/concat @[] :a)
+                   :test-status true
+                   :test-value @[:a]}
+                 @{:expected-form [:breathe]
+                   :expected-status true
+                   :expected-value (:breathe)
+                   :line-no 8
+                   :name ""
+                   :passed false
+                   :rest [52 66 2]
+                   :test-form (tuple :smile)
+                   :test-status true
+                   :test-value (:smile)}]
+         :num-tests 2}]
      [,(get dst-paths 1)
        @{:fails @[@{:expected-form @[1 2 0]
                     :expected-status true
@@ -71,6 +82,7 @@
                     :line-no 8
                     :name ""
                     :passed false
+                    :rest [34 51 2]
                     :test-form (map inc [0 1 2])
                     :test-status true
                     :test-value @[1 2 3]}]
@@ -86,7 +98,7 @@
                  ;dst-paths))
     (parse buf))
   # =>
-  ~@[[,(get dst-paths 0) @{:fails @[] :num-tests 1}]
+  ~@[[,(get dst-paths 0) @{:fails @[] :num-tests 2}]
      [,(get dst-paths 1) @{:fails @[] :num-tests 2}]]
 
   )
