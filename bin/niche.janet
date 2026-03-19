@@ -444,11 +444,23 @@
   (l/note :o (o/separator str n)))
 
 (defn o/prin-form
-  [form-str &opt color]
+  [form-str &opt color indent]
+  (default color nil)
+  (default indent 0)
   (def msg (string/trimr form-str))
-  (def m-buf
-    (buffer (if color (o/color-msg msg color) msg)))
-  (l/note :o m-buf))
+  (def lines (string/split "\n" msg))
+  #
+  (def line-0 (get lines 0))
+  (def buf-0 (buffer (if color (o/color-msg line-0 color) line-0)))
+  (l/note :o buf-0)
+  #
+  (for i 1 (length lines)
+    (l/noten :o)
+    (def line-i (get lines i))
+    (def buf-i
+      (buffer/slice (if color (o/color-msg line-i color) line-i)
+                    indent))
+    (l/note :o buf-i)))
 
 (defn o/prin-data
   [form &opt color]
@@ -498,10 +510,10 @@
           (o/color-msg denom :green)))
 
 (defn o/report-fails
-  [src {:num-tests total-tests :fails fails}]
+  [src {:num-tests _total-tests :fails fails}]
   (var i 0)
   (each f fails
-    (def {:test-form test-form
+    (def {:test-form _test-form
           :test-value test-value
           :expected-value expected-value
           :line-no line-no
@@ -523,8 +535,9 @@
     (l/noten :o)
     (o/prin-color "form:" :yellow)
     (l/noten :o)
-    (o/prin-form (string (string/repeat " " (get rest 2))
-                       (string/slice src (get rest 0) (get rest 1))))
+    (o/prin-form (string/slice src (get rest 0) (get rest 1))
+               nil
+               (get rest 2))
     (l/noten :o)
     #
     (l/noten :o)
@@ -4611,7 +4624,7 @@
 (comment import ./output :prefix "")
 
 
-(def version "2026-03-19_08-18-06")
+(def version "2026-03-19_09-45-32")
 
 (defn main
   [& args]
