@@ -435,12 +435,16 @@
   (def buf-0 (buffer (if color (o/color-msg line-0 color) line-0)))
   (l/note :o buf-0)
   #
+  (def indent-str (string/repeat " " indent))
   (for i 1 (length lines)
     (l/noten :o)
-    (def line-i (get lines i))
+    (def line-i
+      (let [l (get lines i)]
+        (if (string/has-prefix? indent-str l)
+          (buffer/slice l indent)
+          l)))
     (def buf-i
-      (buffer/slice (if color (o/color-msg line-i color) line-i)
-                    indent))
+      (buffer (if color (o/color-msg line-i color) line-i)))
     (l/note :o buf-i)))
 
 (defn o/prin-data
@@ -4192,7 +4196,7 @@
 
 ###########################################################################
 
-(def version "2026-03-19_09-47-23")
+(def version "2026-03-20_06-31-48")
 
 (def usage
   ``

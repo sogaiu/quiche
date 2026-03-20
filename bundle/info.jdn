@@ -17,7 +17,7 @@
    :paths [["jipper.janet" "src/"]]}
   {:name "niche"
    :url "https://github.com/sogaiu/niche"
-   :tag "0e74f9f0c5908528b70809739a5d232eaac5c9ef"
+   :tag "15f5746d95932b7c939aff2ccc6aa91633f2d5e4"
    :paths [["niche.janet" "bin/"]
            ["src/errors.janet" "src/"]
            ["src/files.janet" "src/"]
