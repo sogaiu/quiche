@@ -11,16 +11,13 @@
    :url "https://github.com/sogaiu/jell"
    :tag "718464b8b94971fd8f9e984ca81d35e2c859546e"
    :paths [["jell" "bin/"]]}
-  {:name "jipper"
-   :url "https://github.com/sogaiu/jipper"
-   :tag "7e2876d4a4bad8cd080cf150230ecadc31ed9b20"
-   :paths [["jipper.janet" "src/"]]}
   {:name "niche"
    :url "https://github.com/sogaiu/niche"
-   :tag "15f5746d95932b7c939aff2ccc6aa91633f2d5e4"
+   :tag "9c2832d803b39f27ffd12d1a5fc82f3b83c64b4b"
    :paths [["niche.janet" "bin/"]
            ["src/errors.janet" "src/"]
            ["src/files.janet" "src/"]
+           ["src/jipper.janet" "src/"]
            ["src/log.janet" "src/"]
            ["src/output.janet" "src/"]
            ["src/paths.janet" "src/"]
